@@ -1,0 +1,49 @@
+[
+  {
+    "name": "products",
+    "type": "base",
+    "fields": [
+      {"name": "product_id", "type": "text"},
+      {"name": "name_item", "type": "text"},
+      {"name": "stock", "type": "number"},
+      {"name": "price_usd", "type": "number"},
+      {"name": "price_eur", "type": "number"},
+      {"name": "category", "type": "text"}
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "stock >= 0",
+    "deleteRule": "@request.auth.id != '' && stock >= 0"
+  },
+  {
+    "name": "sales",
+    "type": "base",
+    "fields": [
+      {"name": "user_id", "type": "text"},
+      {"name": "user_email", "type": "text"},
+      {"name": "user_role", "type": "text"},
+      {"name": "n_factura", "type": "text"},
+      {"name": "dolartoday", "type": "number"},
+      {"name": "total_usd", "type": "number"},
+      {"name": "total_ves", "type": "number"},
+      {"name": "items", "type": "json"},
+      {"name": "id_fecha", "type": "text"},
+      {"name": "payment_method", "type": "select", "values": ["EFECTIVO", "PAGO MOVIL", "DIVISAS", "MIXTO"]},
+      {"name": "payment_details", "type": "json"}
+    ]
+  },
+  {
+    "name": "auditoria_sesiones",
+    "type": "base",
+    "fields": [
+      {"name": "usuario", "type": "text"},
+      {"name": "hora_conexion", "type": "text"},
+      {"name": "hora_desconexion", "type": "text"},
+      {"name": "estado_inicio", "type": "select", "values": ["SUCCESS", "FAIL"]},
+      {"name": "estado_cierre", "type": "select", "values": ["SUCCESS", "FAIL"]},
+      {"name": "errores_conteo", "type": "number"},
+      {"name": "logs_json", "type": "json"}
+    ]
+  }
+]
