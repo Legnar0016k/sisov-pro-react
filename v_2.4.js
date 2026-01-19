@@ -3,6 +3,14 @@
  * Versión depurada, sin inconsistencias, lista para producción
  */
 
+// Monitor Integrado (Colores según tus reglas)
+const log = {
+    info: (m) => console.log(`%c[INFO]: ${m}`, 'color: #0000FF'),
+    success: (m) => console.log(`%c[ÉXITO]: ${m}`, 'color: #008000'),
+    error: (m) => console.log(`%c[ERROR API]: ${m}`, 'color: #FF0000')
+};
+log.info("Cargando sistema desde Railway...");
+
 // ==================== 1. INICIALIZACIÓN GLOBAL ====================
 const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
 
