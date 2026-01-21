@@ -6,6 +6,7 @@
 ![Responsive](https://img.shields.io/badge/Design-Responsive-purple)
 
 **Sistema de Gestión Comercial Completo** - Punto de Venta, Inventario, Reportes y Administración
+**v3.0 (Carpeta /v3):** Versión Beta. Arquitectura limpia, estructurada bajo el principio de inmutabilidad y modularidad. Diseñada como Base Sólida para escalar a versiones comerciales.
 #============================================================================
 ## ✨ Características Principales
 

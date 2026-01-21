@@ -4,6 +4,8 @@
 **Autor:** Raul Eduardo Rangel Fernandez
 **Licencia:** Todos los derechos reservados (All Rights Reserved)
 
+**v2.4 (Raíz): Versión Alpha.** Prototipo inicial con errores conocidos de lógica y concurrencia. No recomendada para producción.
+
 ---
 
 ## 📄 AVISO LEGAL DE PROPIEDAD INTELECTUAL
