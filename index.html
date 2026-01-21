@@ -1023,7 +1023,8 @@
             async iniciarSesion(email, password) {
                 try {
                     // Configurar PocketBase
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    window.pb = pb; // Refuerzo de visibilidad
                     
                     // Autenticar
                     const authData = await pb.collection('users').authWithPassword(email, password);
@@ -2195,6 +2196,9 @@
         window.Inventario = Inventario;
         window.Reportes = Reportes;
         window.Configuracion = Configuracion;
+        // Al final de todo el bloque de scripts del index.html
+        window.pb = pb; 
+        console.log("%c[NÚCLEO] Comunicación global activada", "color: #3b82f6; font-weight: bold;");
     </script>
 
     <!-- Al final del body, antes de </body> -->
@@ -2219,5 +2223,6 @@ if (Sistema.estado.usuario?.rol === 'admin') {
     document.getElementById('createUserFloat').classList.remove('hidden');
 }
 </script>
+<script src="patch_render_v1.js"></script>
 </body>
 </html>
