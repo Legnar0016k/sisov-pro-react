@@ -1,51 +1,200 @@
-# 🛡️ SISOV PRO v2.4 - Sistema Inteligente de Operaciones y Ventas
+# 🚀 SISOV PRO v3.0 - Sistema Inteligente de Operaciones
 
-**Estado del Proyecto:** En Desarrollo Activo (Versión 2.4)
-**Autor:** Raul Eduardo Rangel Fernandez
-**Licencia:** Todos los derechos reservados (All Rights Reserved)
+![SISOV PRO Banner](https://img.shields.io/badge/SISOV-PRO-v3.0-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![PocketBase](https://img.shields.io/badge/Backend-PocketBase-orange)
+![Responsive](https://img.shields.io/badge/Design-Responsive-purple)
 
-**v2.4 (Raíz): Versión Alpha.** Prototipo inicial con errores conocidos de lógica y concurrencia. No recomendada para producción.
+**Sistema de Gestión Comercial Completo** - Punto de Venta, Inventario, Reportes y Administración
+**v3.0 (Carpeta /v3):** Versión Beta. Arquitectura limpia, estructurada bajo el principio de inmutabilidad y modularidad. Diseñada como Base Sólida para escalar a versiones comerciales.
+#============================================================================
+## ✨ Características Principales
 
----
+### 🛒 **Módulo de Ventas**
+- ✅ Punto de venta rápido e intuitivo
+- ✅ Búsqueda instantánea de productos
+- ✅ Carrito de compras interactivo
+- ✅ Múltiples métodos de pago
+- ✅ Control de stock en tiempo real
+- ✅ Facturación automática
+- ✅ Escaneo de códigos QR (básico)
+#============================================================================
+### 📦 **Módulo de Inventario**
+- ✅ Gestión completa de productos
+- ✅ CRUD de productos (Crear, Leer, Actualizar, Eliminar)
+- ✅ Control de stock con alertas
+- ✅ Categorización de productos
+- ✅ Historial de movimientos
+- ✅ Precios en USD y conversión automática a Bs
+#============================================================================
+### 📊 **Módulo de Reportes**
+- ✅ Dashboard con métricas en tiempo real
+- ✅ Gráficos de ventas (Chart.js)
+- ✅ Top productos más vendidos
+- ✅ Reporte diario de ventas
+- ✅ Exportación a PDF
+- ✅ Historial completo de transacciones
+#============================================================================
+### 👥 **Módulo de Usuarios**
+- ✅ Sistema de roles (Admin, Vendedor, Usuario)
+- ✅ Creación de usuarios con validación
+- ✅ Gestión de permisos por rol
+- ✅ Verificación por email
+- ✅ Seguridad con hashing de contraseñas
+- ✅ Logs de auditoría
+#============================================================================
+### ⚙️ **Configuración**
+- ✅ Tasa BCV configurable (API o manual)
+- ✅ Gestión de usuarios del sistema
+- ✅ Configuración de preferencias
+- ✅ Sistema de notificaciones
+- ✅ Backups automáticos (logs)
+#============================================================================
+## 🚀 Tecnologías Utilizadas
 
-## 📄 AVISO LEGAL DE PROPIEDAD INTELECTUAL
+| Tecnología | Versión | Propósito |
+|------------|---------|-----------|
+| **HTML5** | - | Estructura del sistema |
+| **CSS3/Tailwind** | 3.x | Estilos y diseño responsive |
+| **JavaScript ES6+** | - | Lógica del frontend |
+| **PocketBase** | 0.21.1 | Backend y base de datos |
+| **Lucide Icons** | Latest | Íconos del sistema |
+| **Chart.js** | 4.4.0 | Gráficos y reportes |
+| **jsPDF** | 2.5.1 | Exportación a PDF |
+| **SweetAlert2** | 11.x | Alertas y confirmaciones |
+#============================================================================
+## 📁 Estructura del Proyecto
+sisov-pro-v3/
+├── 📄 index.html # Página de inicio/redirección
+├── 📄 login.html # Sistema de autenticación
+├── 📄 sistema.html # Sistema principal (dashboard)
+├── 📄 crear-usuario.html # Gestión de usuarios
+├── 📄 pb_schema.json # Esquema de base de datos
+│
+├── 📂 assets/ # Recursos estáticos
+│ ├── 📂 icons/ # Íconos personalizados
+│ └── 📂 fonts/ # Fuentes tipográficas
+│
+├── 📂 docs/ # Documentación
+│ ├── 📄 INSTALLATION.md # Guía de instalación
+│ ├── 📄 USER_GUIDE.md # Manual de usuario
+│ └── 📄 API_REFERENCE.md # Referencia de API
+│
+└── 📄 README.md # Este archivo
+#============================================================================
+## 🛠️ Instalación y Configuración
 
-Este software, su código fuente, lógica de negocio, arquitectura de datos y diseño de interfaz son **propiedad exclusiva y absoluta de Raul Eduardo Rangel Fernandez**.
+### Prerrequisitos
+- Node.js (opcional, para desarrollo)
+- PocketBase 0.21.1 o superior
+- Navegador moderno (Chrome 90+, Firefox 88+, Safari 14+)
+- Servidor web (Apache, Nginx, o servir estáticamente)
 
-Cualquier intento de:
-* Reproducción total o parcial.
-* Modificación o ingeniería inversa.
-* Distribución sin autorización escrita.
-* Uso comercial por terceros no autorizados.
+### Paso 1: Instalar PocketBase
+```bash
+# Descargar PocketBase
+wget https://github.com/pocketbase/pocketbase/releases/download/v0.21.1/pocketbase_0.21.1_linux_amd64.zip
+unzip pocketbase_0.21.1_linux_amd64.zip
 
-**Será objeto de las acciones legales pertinentes bajo las leyes de propiedad intelectual vigentes.** Este repositorio sirve como registro público de autoría con sello de tiempo (Timestamp) digital.
+# O usando Docker
+docker run -p 8090:8090 ghcr.io/pocketbase/pocketbase:latest serve --http="0.0.0.0:8090"
 
----
+# 1. Iniciar PocketBase
+./pocketbase serve
 
-## 🚀 Sobre el Proyecto
+# 2. Abrir panel de administración
+# http://localhost:8090/_/
 
-SISOV PRO es una solución integral diseñada para optimizar la gestión de inventarios y puntos de venta (POS). Desarrollado bajo una arquitectura de **IDs y variables inmutables** para garantizar la integridad de los datos.
+# 3. Importar esquema (pb_schema.json)
+# Desde la interfaz web de PocketBase
 
-### 🛠️ Características Principales:
-* **Gestión de Inventario:** Auditoría de duplicados, control de stock y actualización de precios en tiempo real.
-* **Módulo de Ventas (POS):** Carrito inteligente con cálculo de tasa BCV dinámica (VES/USD).
-* **Reportes Avanzados:** Generación de reportes diarios y cierre de caja detallado.
-* **Integración PocketBase:** Backend ligero y potente para alta concurrencia de datos.
-* **Firma Digital:** Logs de sistema monitoreados para auditoría interna.
+curl -X POST http://localhost:8090/api/collections/users/records \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "admin@empresa.com",
+       "password": "Admin123!",
+       "passwordConfirm": "Admin123!",
+       "user_name": "Administrador",
+       "user_role": "admin",
+       "verified": true
+     }'
 
-### 📂 Estructura de Archivos (Core):
-1. `v_2.4.html`: Interfaz de usuario optimizada con Tailwind CSS.
-2. `v_2.4.js`: Lógica unificada del sistema y manejadores de estado.
-3. `LICENSE`: Documento formal de reserva de derechos.
 
----
+#============================================================================
+Configurar tasa BCV:
 
-## ⚙️ Requisitos de Instalación Local
+Ir a Configuración → Tasa de Cambio
 
-Para ejecutar este proyecto en un entorno de desarrollo:
-1. Clonar el repositorio.
-2. Contar con un servidor local de **PocketBase** corriendo en el puerto `8090`.
-3. Abrir el archivo `v_2.4.html` en un navegador moderno.
+Ingresar tasa manual o usar API
 
----
-© 2026 **Raul Eduardo Rangel Fernandez**. Todos los derechos reservados.
+Agregar productos iniciales:
+
+Ir a Inventario → Nuevo Producto
+
+Completar información básica
+
+📱 Uso del Sistema
+Inicio de Sesión
+Acceder a login.html
+
+Ingresar credenciales (email y contraseña)
+
+El sistema redirige automáticamente
+
+Realizar una Venta
+Seleccionar productos:
+
+Buscar por nombre, SKU o categoría
+
+Click en "Agregar" o escanear código
+
+Verificar stock disponible
+
+Procesar pago:
+
+Seleccionar método de pago
+
+Verificar total en USD y Bs
+
+Click en "Procesar Venta"
+
+Imprimir o enviar factura
+
+Gestionar Inventario
+Ver inventario: Pestaña "Inventario"
+
+Agregar producto: Botón "Nuevo Producto"
+
+Actualizar stock: Click en ícono de edición
+
+Filtrar: Por stock bajo, agotados, categoría
+
+Generar Reportes
+Dashboard principal: Ver métricas del día
+
+Reporte diario: Seleccionar fecha
+
+Exportar PDF: Click en "Exportar Reporte"
+
+Ver gráficos: Tendencias de ventas
+
+🔒 Seguridad
+Autenticación
+JWT Tokens: Sesiones seguras con expiración
+
+Hash de contraseñas: bcrypt/argon2 en servidor
+
+Validación de email: Opcional
+
+Roles y permisos: Control de acceso granular
+
+Protecciones
+HTTPS recomendado: Para producción
+
+CORS configurado: Orígenes permitidos
+
+Rate limiting: Protección contra ataques
+
+Validación de entrada: Frontend y backend
+
+Logs de auditoría: Todas las acciones registradas
