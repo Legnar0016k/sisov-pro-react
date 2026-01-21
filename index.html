@@ -1516,7 +1516,7 @@
             
             async registrarVenta() {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Preparar datos de la venta
                     const ventaData = {
@@ -1622,7 +1622,7 @@
         const Inventario = {
             async cargarProductos() {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     const productos = await pb.collection('products').getFullList();
                     Sistema.estado.productos = productos;
                 } catch (error) {
@@ -1719,7 +1719,7 @@
                 event.preventDefault();
                 
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     const productoData = {
                         name_p: document.getElementById('productName').value,
@@ -1768,7 +1768,7 @@
                 }).then(async (result) => {
                     if (result.isConfirmed) {
                         try {
-                            const pb = new PocketBase('http://127.0.0.1:8090');
+                            const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                             await pb.collection('products').delete(productoId);
                             
                             // Actualizar estado local
@@ -1844,7 +1844,7 @@
             
             async cargarVentasHoy() {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener fecha de hoy
                     const hoy = new Date().toISOString().split('T')[0];
@@ -1909,7 +1909,7 @@
             
             async cargarGraficoVentas() {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener ventas de los últimos 7 días
                     const fechaInicio = new Date();
@@ -1970,7 +1970,7 @@
             
             async cargarTopProductos() {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener ventas recientes
                     const ventas = await pb.collection('sales').getFullList({
@@ -2020,7 +2020,7 @@
             
             async verDetalleVenta(ventaId) {
                 try {
-                    const pb = new PocketBase('http://127.0.0.1:8090');
+                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     const venta = await pb.collection('sales').getOne(ventaId);
                     
                     Swal.fire({
@@ -2094,7 +2094,7 @@
           //funcion para cargar los usuarios  
           async cargarUsuarios() {
             try {
-            const pb = new PocketBase('http://127.0.0.1:8090');
+            const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
             const usuarios = await pb.collection('users').getFullList();
             
             const container = document.getElementById('usersList');
@@ -2170,7 +2170,7 @@
             
             // Verificar conexión al servidor
             try {
-                const pb = new PocketBase('http://127.0.0.1:8090');
+                const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                 await pb.health.check();
                 document.getElementById('serverStatus').textContent = 'Conectado';
                 document.getElementById('serverStatus').classList.add('text-emerald-500');
