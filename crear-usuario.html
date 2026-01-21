@@ -432,6 +432,9 @@
         // Configurar PocketBase
         const PB_URL = 'https://sisov-pro-react-production.up.railway.app';
         const pb = new PocketBase(PB_URL);
+
+        // Log estético para confirmar conexión
+        console.log("%c[INFO] Conectando a SISOV Cloud: " + PB_URL, "color: #3b82f6; font-weight: bold;");
         
         // Seleccionar rol
         function seleccionarRol(rol) {
@@ -576,6 +579,7 @@
             
             // Obtener datos del formulario
             const userData = {
+                username: `user_${Math.random().toString(36).slice(2, 7)}`, // Esto soluciona el fallo en la nube
                 email: document.getElementById('email').value,
                 emailVisibility: false,
                 password: document.getElementById('password').value,
@@ -665,7 +669,7 @@
         
         // Volver al sistema
         function volverAlSistema() {
-            window.location.href = '/index.html';
+            window.location.href = 'index.html';
         }
         
         // Sistema de notificaciones
