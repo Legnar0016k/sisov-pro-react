@@ -968,8 +968,15 @@
     </div>
     
     <!-- Scripts del Sistema -->
+     
     
     <script>
+
+    // 1. DECLARACIÓN ÚNICA Y GLOBAL
+
+    var pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+    window.pb = pb; // Esto le abre la puerta al parche
+
         // ===== SISTEMA PRINCIPAL =====
         const Sistema = {
             // Estado global
@@ -1024,7 +1031,7 @@
                 try {
                     // Configurar PocketBase
                     pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
-                    window.pb = pb; // Refuerzo de visibilidad
+                    
                     
                     // Autenticar
                     const authData = await pb.collection('users').authWithPassword(email, password);
@@ -1518,7 +1525,7 @@
             
             async registrarVenta() {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Preparar datos de la venta
                     const ventaData = {
@@ -1624,7 +1631,7 @@
         const Inventario = {
             async cargarProductos() {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     const productos = await pb.collection('products').getFullList();
                     Sistema.estado.productos = productos;
                 } catch (error) {
@@ -1721,7 +1728,7 @@
                 event.preventDefault();
                 
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     const productoData = {
                         name_p: document.getElementById('productName').value,
@@ -1770,7 +1777,7 @@
                 }).then(async (result) => {
                     if (result.isConfirmed) {
                         try {
-                            const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                            pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                             await pb.collection('products').delete(productoId);
                             
                             // Actualizar estado local
@@ -1846,7 +1853,7 @@
             
             async cargarVentasHoy() {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener fecha de hoy
                     const hoy = new Date().toISOString().split('T')[0];
@@ -1911,7 +1918,7 @@
             
             async cargarGraficoVentas() {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener ventas de los últimos 7 días
                     const fechaInicio = new Date();
@@ -1972,7 +1979,7 @@
             
             async cargarTopProductos() {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     // Obtener ventas recientes
                     const ventas = await pb.collection('sales').getFullList({
@@ -2022,7 +2029,7 @@
             
             async verDetalleVenta(ventaId) {
                 try {
-                    const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     const venta = await pb.collection('sales').getOne(ventaId);
                     
                     Swal.fire({
@@ -2096,7 +2103,7 @@
           //funcion para cargar los usuarios  
           async cargarUsuarios() {
             try {
-            const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+            pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
             const usuarios = await pb.collection('users').getFullList();
             
             const container = document.getElementById('usersList');
@@ -2172,7 +2179,7 @@
             
             // Verificar conexión al servidor
             try {
-                const pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                 await pb.health.check();
                 document.getElementById('serverStatus').textContent = 'Conectado';
                 document.getElementById('serverStatus').classList.add('text-emerald-500');
@@ -2196,8 +2203,6 @@
         window.Inventario = Inventario;
         window.Reportes = Reportes;
         window.Configuracion = Configuracion;
-        // Al final de todo el bloque de scripts del index.html
-        window.pb = pb; 
         console.log("%c[NÚCLEO] Comunicación global activada", "color: #3b82f6; font-weight: bold;");
     </script>
 
@@ -2223,6 +2228,6 @@ if (Sistema.estado.usuario?.rol === 'admin') {
     document.getElementById('createUserFloat').classList.remove('hidden');
 }
 </script>
-<script src="patch_render_v1.js"></script>
+
 </body>
 </html>

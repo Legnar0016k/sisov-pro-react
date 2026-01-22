@@ -393,20 +393,21 @@
             </div>
             
             <!-- Botones de Acción -->
-            <div class="flex flex-col sm:flex-row gap-3 pt-4">
-                <button type="button" onclick="volverAlSistema()" 
-                        class="flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 transition-colors">
-                    <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                    <span>VOLVER</span>
-                </button>
-                
-                <button type="submit" 
-                        id="createUserBtn"
-                        class="flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 btn-primary">
-                    <i data-lucide="user-plus" class="w-5 h-5"></i>
-                    <span>CREAR USUARIO</span>
-                </button>
-            </div>
+          <div class="flex flex-col sm:flex-row gap-3 pt-4">
+    <button type="button" onclick="volverAlSistema()" 
+            class="group flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-slate-800 transition-all duration-300">
+        <i data-lucide="arrow-left" class="w-5 h-5 group-hover:-translate-x-1 transition-transform"></i>
+        <span>VOLVER AL SISTEMA</span>
+        <span class="text-xs opacity-70"></span>
+    </button>
+    
+    <button type="submit" 
+            id="createUserBtn"
+            class="flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 btn-primary">
+        <i data-lucide="user-plus" class="w-5 h-5"></i>
+        <span>CREAR USUARIO</span>
+    </button>
+</div>
         </form>
         
         <!-- Footer -->
