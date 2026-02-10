@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SISOV PRO v2.4 | Sistema Inteligente de Operaciones</title>
+    <!-- CDNs optimizadas con versiones específicas para estabilidad -->
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.21.1/dist/pocketbase.umd.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
+    
+
+    <!-- Preconexión para mejor rendimiento -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+    
+    <style>
+        /* Variables CSS personalizadas para consistencia */
+        :root {
+            --primary-color: #4f46e5;
+            --primary-dark: #4338ca;
+            --secondary-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --success-color: #22c55e;
+            --radius-xl: 1.5rem;
+            --radius-2xl: 2rem;
+            --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 40px -10px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Reset y base optimizados */
+        html, body {
+            overflow-x: hidden;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        /* Sistema de tabs mejorado */
+        .tab-content {
+            width: 100%;
+            overflow: hidden;
+            display: none;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .tab-content.active {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        /* Modales elegantes */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.92);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(12px);
+            padding: 1rem;
+            animation: modalFadeIn 0.2s ease-out;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        /* Scroll personalizado elegante */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(241, 245, 249, 0.5);
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+            transition: background 0.3s;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* Contenedores de scroll optimizados */
+        .scroll-container {
+            max-height: calc(100vh - 280px);
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0.5rem;
+            width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Scanner con diseño profesional */
+        #scanner-wrapper {
+            display: none;
+            width: 100%;
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            background: #000;
+            position: relative;
+            border: 3px solid var(--primary-color);
+            box-shadow: 0 0 30px rgba(79, 70, 229, 0.3);
+        }
+        
+        #scanner-wrapper.active {
+            display: block;
+            animation: scannerIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        /* Efectos hover sutiles */
+        .hover-lift {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .hover-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+        }
+        
+        /* Animaciones personalizadas */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+            from { 
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes modalFadeIn {
+            from { 
+                opacity: 0;
+                backdrop-filter: blur(0px);
+            }
+            to { 
+                opacity: 1;
+                backdrop-filter: blur(12px);
+            }
+        }
+        
+        @keyframes scannerIn {
+            from { 
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to { 
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes pulse-subtle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        /* Estados de carga */
+        .skeleton {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+        }
+        
+        @keyframes skeleton-loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        /* Responsive optimizado */
+        @media (max-width: 768px) {
+            .scroll-container {
+                max-height: calc(100vh - 320px);
+            }
+            
+            .modal > div {
+                width: 95%;
+                max-width: 95%;
+            }
+        }
+        
+        @media (max-width: 640px) {
+            .nav-container {
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                padding-top: 0.5rem;
+                padding-bottom: 0.5rem;
+            }
+            
+            .nav-logo { order: 1; }
+            .nav-user { order: 2; }
+            .nav-actions { 
+                order: 3; 
+                width: 100%; 
+                justify-content: space-between;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 0.75rem;
+                margin-top: 0.5rem;
+            }
+            
+            .tab-content {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+        }
+        
+        /* Mejoras tipográficas */
+        .text-balance {
+            text-wrap: balance;
+        }
+        
+        /* Gradientes modernos */
+        .gradient-primary {
+            background: linear-gradient(135deg, var(--primary-color), #7c3aed);
+        }
+        
+        .gradient-success {
+            background: linear-gradient(135deg, var(--success-color), #16a34a);
+        }
+        
+        .gradient-danger {
+            background: linear-gradient(135deg, var(--danger-color), #dc2626);
+        }
+        
+        /* Efectos de vidrio (glassmorphism) */
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Estilos específicos para modal de restock */
+#restock-modal input[type="number"]::-webkit-inner-spin-button,
+#restock-modal input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+    height: 30px;
+}
+
+/* Animación para botones de cantidad rápida */
+#restock-modal button[onclick*="setRestockQty"] {
+    transition: all 0.2s ease;
+}
+
+#restock-modal button[onclick*="setRestockQty"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+#restock-modal button[onclick*="setRestockQty"]:active {
+    transform: translateY(0);
+}
+
+/* Estilo para el input de cantidad */
+#restock-qty {
+    transition: all 0.3s ease;
+}
+
+#restock-qty:focus {
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    border-color: #22c55e;
+}
+
+/* Estilos específicos para modal de merma */
+#reduce-modal input[type="number"] {
+    transition: all 0.3s ease;
+}
+
+#reduce-modal input[type="number"]:focus {
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+}
+
+#reduce-modal button[onclick*="setReduceQty"] {
+    transition: all 0.2s ease;
+}
+
+#reduce-modal button[onclick*="setReduceQty"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+#reduce-modal button[onclick*="setReduceQty"]:active {
+    transform: translateY(0);
+}
+
+/* Animación de advertencia */
+@keyframes warningPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+#reduce-warning {
+    animation: warningPulse 2s infinite;
+}
+
+/* Estilos para modal de edición de precio */
+#price-modal input[type="number"] {
+    transition: all 0.3s ease;
+}
+
+#price-modal input[type="number"]:focus {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+    border-color: #f59e0b;
+}
+
+#price-modal input[type="text"]:focus {
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+    border-color: #4f46e5;
+}
+
+/* Animación para el precio en bolívares */
+@keyframes priceUpdate {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+#live-price-ves.updated {
+    animation: priceUpdate 0.3s ease;
+}
+
+    </style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 text-slate-900 font-sans antialiased min-h-screen">
+    <!-- advertencia ⚠️ VERSIÓN ALPHA (v2.4)-->
+    <div style="background: #ef4444; color: white; text-align: center; padding: 5px; font-size: 12px; font-weight: bold;">
+    ⚠️ VERSIÓN ALPHA (v2.4) - ESTA VERSIÓN CONTIENE BUGS Y NO TIENE SOPORTE. 
+    <a href="./v3/" style="text-decoration: underline; color: yellow; margin-left: 10px;">PROBAR VERSIÓN 3.0 (BETA ESTABLE) →</a>
+</div>
+    <!-- Pantalla de Login -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div class="bg-white/95 backdrop-blur-sm p-8 md:p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-700/20 hover-lift">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-20 h-20 gradient-primary rounded-3xl shadow-lg shadow-indigo-500/30 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                </div>
+                <h1 class="text-4xl font-black text-center text-slate-800 mb-2 italic tracking-tighter">SISOV PRO</h1>
+                <p class="text-center text-slate-500 text-xs uppercase tracking-[0.3em] font-bold mb-2">v2.4</p>
+                <p class="text-slate-400 text-[10px] uppercase tracking-wider">Sistema Inteligente de Operaciones</p>
+            </div>
+            <form id="login-form" class="space-y-5">
+                <div class="relative">
+                    <i data-lucide="user" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                    <input type="email" id="login-email" placeholder="correo@ejemplo.com" required 
+                           class="w-full p-4 pl-12 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 text-sm">
+                </div>
+                <div class="relative">
+                    <i data-lucide="lock" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                    <input type="password" id="login-pass" placeholder="••••••••" required 
+                           class="w-full p-4 pl-12 border-2 border-slate-200 rounded-2xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 text-sm">
+                </div>
+                <button type="submit" 
+                        class="w-full gradient-primary text-white py-4 rounded-2xl font-bold hover:shadow-xl hover:shadow-indigo-500/30 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2">
+                    <i data-lucide="log-in" class="w-5 h-5"></i>
+                    <span>INICIAR SESIÓN</span>
+                </button>
+            </form>
+            <div class="mt-6 pt-6 border-t border-slate-200 text-center">
+                <p class="text-slate-400 text-[10px] uppercase tracking-wider">© 2024 SISOV PRO - Todos los derechos reservados</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interfaz Principal -->
+    <div id="app-interface" class="hidden">
+        <!-- Banner de advertencia de tiempo -->
+        <div id="time-warning-banner" class="hidden bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-black text-center py-3 uppercase tracking-widest animate-pulse">
+            ⚠️ CICLO DEL SERVIDOR CAMBIADO - Las ventas se registrarán con fecha de mañana
+        </div>
+        
+        <!-- Navegación Principal Mejorada -->
+        <nav class="glass-effect border-b border-slate-200/50 sticky top-0 z-50 shadow-sm backdrop-blur-md">
+            <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
+                <!-- Logo y Tasa -->
+                <div class="flex items-center justify-between w-full md:w-auto gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-gradient-to-br from-indigo-600 to-violet-600 w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                            <i data-lucide="bar-chart-3" class="w-6 h-6 text-white"></i>
+                        </div>
+                        <div>
+                            <span class="font-black text-xl text-slate-800 tracking-tight">SISOV PRO</span>
+                            <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider ml-2">v2.4</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Indicador de Tasa BCV Mejorado -->
+                    <div id="rate-container" class="group relative" onclick="openTasaModal()">
+                        <div id="rate-alert-dot" class="hidden absolute -top-1 -right-1 z-10">
+                            <span class="flex h-3 w-3">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                            </span>
+                        </div>
+                        <div class="flex items-center bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 px-3 py-2 rounded-xl shadow-sm active:scale-95 transition-all duration-200 cursor-pointer hover:from-emerald-100 hover:to-green-100 hover:border-emerald-300 group">
+                            <div class="flex flex-col leading-none mr-3 border-r border-emerald-200 pr-3 text-left">
+                                <span class="text-[8px] font-black text-emerald-700 uppercase tracking-wider">TASA BCV</span>
+                                <span class="text-[9px] font-bold text-slate-600 uppercase font-mono" id="rate-source-indicator">API DOLAR</span>
+                            </div>
+                            <div class="flex items-baseline gap-1">
+                                <span id="rate-bcv" class="text-lg md:text-xl font-black text-emerald-800 tracking-tight">--.--</span>
+                                <span class="text-[10px] font-bold text-emerald-700 uppercase">Bs/$</span>
+                            </div>
+                            <div id="rate-saved-indicator" class="ml-2 hidden" title="Tasa persistente guardada">
+                                <i data-lucide="save" class="w-4 h-4 text-emerald-600"></i>
+                            </div>
+                            <i data-lucide="chevron-down" class="ml-2 w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información de Usuario (Desktop) -->
+                <div id="user-active-display-container" class="hidden md:flex flex-col text-right leading-tight justify-center px-4 border-r border-slate-200 mr-4">
+                    <div id="user-active-display" class="flex flex-col">
+                        <span class="text-slate-700 font-black text-xs uppercase tracking-tight">¡HOLA, <span id="user-display-name" class="text-indigo-600">USUARIO</span>!</span>
+                        <span id="user-display-id" class="text-[9px] text-slate-500 font-mono mt-0.5">ID: CARGANDO...</span>
+                    </div>
+                    <div class="flex items-center justify-end gap-1 mt-1">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span class="text-[8px] text-slate-500 font-bold uppercase tracking-tight">Conectado</span>
+                    </div>
+                </div>
+
+                <!-- Navegación por Tabs -->
+                <div class="flex bg-slate-100/80 p-1 rounded-2xl w-full md:w-auto nav-actions">
+                    <button onclick="switchTab('pos')" 
+                            class="flex-1 md:w-auto flex flex-col md:flex-row items-center justify-center gap-2 p-3 md:px-4 rounded-xl transition-all duration-200 tab-button active"
+                            data-tab="pos"
+                            title="Punto de Venta">
+                        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                        <span class="text-[9px] font-bold uppercase">Ventas</span>
+                    </button>
+                    <button onclick="switchTab('inventory')" 
+                            class="flex-1 md:w-auto flex flex-col md:flex-row items-center justify-center gap-2 p-3 md:px-4 rounded-xl transition-all duration-200 tab-button"
+                            data-tab="inventory"
+                            title="Gestión de Inventario">
+                        <i data-lucide="package" class="w-5 h-5"></i>
+                        <span class="text-[9px] font-bold uppercase">Inventario</span>
+                    </button>
+                    <button onclick="switchTab('reports')" 
+                            class="flex-1 md:w-auto flex flex-col md:flex-row items-center justify-center gap-2 p-3 md:px-4 rounded-xl transition-all duration-200 tab-button"
+                            data-tab="reports"
+                            title="Reportes y Cierre">
+                        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                        <span class="text-[9px] font-bold uppercase">Reportes</span>
+                    </button>
+                    
+                    <!-- Botón de Salir -->
+                    <button onclick="handleLogout()" 
+                            class="flex-1 md:w-auto flex flex-col md:flex-row items-center justify-center gap-2 p-3 md:px-4 rounded-xl transition-all duration-200 text-red-500 hover:bg-red-50 ml-1"
+                            title="Cerrar Sesión">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                        <span class="text-[9px] font-bold uppercase">Salir</span>
+                    </button>
+                </div>
+
+                <!-- Información de Usuario (Móvil) -->
+                <div id="user-mobile-display" class="md:hidden flex items-center justify-between w-full pt-3 border-t border-slate-200">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
+                            <i data-lucide="user" class="w-4 h-4 text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <span id="user-mobile-name" class="text-xs font-bold text-slate-700">Usuario</span>
+                            <span id="user-mobile-id" class="text-[8px] text-slate-500 font-mono">ID: ---</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span class="text-[8px] text-slate-500">Online</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Contenido Principal -->
+        <main class="max-w-7xl mx-auto p-4 md:p-6">
+            <!-- Sección Punto de Venta -->
+            <section id="pos" class="tab-content active">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+                    <!-- Panel de Productos -->
+                    <div class="lg:col-span-8">
+                        <div class="flex flex-col md:flex-row gap-3 mb-6">
+                            <div class="relative flex-1">
+                                <i data-lucide="search" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                                <input type="text" id="pos-search" oninput="filterPOS()" 
+                                       placeholder="BUSCAR PRODUCTO POR NOMBRE, CÓDIGO O CATEGORÍA..." 
+                                       class="w-full p-4 pl-12 rounded-2xl border-2 border-slate-200 bg-white shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 text-sm uppercase placeholder:normal-case">
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="startScanner()" 
+                                        class="gradient-primary text-white px-5 py-4 rounded-2xl shadow-lg hover:shadow-xl hover:shadow-indigo-500/30 transition-all duration-300 flex items-center gap-2">
+                                    <i data-lucide="camera" class="w-5 h-5"></i>
+                                    <span class="text-xs font-bold hidden md:inline">ESCANEAR</span>
+                                </button>
+                                <button onclick="openModal()" 
+                                        class="bg-slate-800 text-white px-5 py-4 rounded-2xl shadow-lg hover:bg-slate-900 transition-all duration-300 flex items-center gap-2">
+                                    <i data-lucide="plus" class="w-5 h-5"></i>
+                                    <span class="text-xs font-bold hidden md:inline">NUEVO</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Scanner QR -->
+                        <div id="scanner-wrapper" class="mb-6">
+                            <div id="reader" style="width: 100%; min-height: 280px; background: #000;"></div>
+                            <button onclick="stopScanner()" 
+                                    class="absolute top-4 right-4 z-[60] bg-red-600 text-white p-3 rounded-full shadow-xl hover:bg-red-700 transition-all">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+
+                        <!-- Grid de Productos -->
+                        <div id="product-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 scroll-container custom-scrollbar">
+                            <!-- Los productos se cargan dinámicamente aquí -->
+                            <div class="col-span-2 sm:col-span-3 md:col-span-4 text-center py-12 text-slate-400">
+                                <i data-lucide="package" class="w-12 h-12 mx-auto mb-4 opacity-50"></i>
+                                <p class="text-sm font-medium">Cargando productos...</p>
+                                <p class="text-xs mt-1">Si no hay tasa BCV configurada, el sistema estará bloqueado</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel del Carrito -->
+                    <div class="lg:col-span-4">
+                        <div class="bg-white rounded-3xl shadow-lg border border-slate-200 h-fit sticky top-24 lg:top-28 hover-lift">
+                            <div class="p-6 border-b border-slate-100">
+                                <h2 class="font-bold text-slate-700 flex items-center gap-2">
+                                    <i data-lucide="shopping-bag" class="w-5 h-5 text-indigo-600"></i>
+                                    <span class="text-sm uppercase tracking-wider">Carrito de Venta</span>
+                                    <span id="cart-count" class="ml-auto bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded-full">0</span>
+                                </h2>
+                            </div>
+                            
+                            <!-- Items del Carrito -->
+                            <div id="cart-items" class="p-4 space-y-3 mb-4 min-h-[200px] max-h-[350px] overflow-y-auto custom-scrollbar">
+                                <div class="text-center py-10 text-slate-400">
+                                    <i data-lucide="shopping-cart" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
+                                    <p class="text-sm font-medium">Carrito vacío</p>
+                                    <p class="text-xs mt-1">Agregue productos para comenzar</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Resumen y Pago -->
+                            <div class="border-t border-slate-100 p-6">
+                                <div class="mb-5">
+                                    <div class="flex justify-between items-baseline mb-2">
+                                        <span class="text-xs text-slate-500 font-medium uppercase">Total en Bolívares</span>
+                                        <span id="cart-total-ves" class="text-3xl font-black text-slate-800">0.00</span>
+                                    </div>
+                                    <div class="flex justify-between text-xs text-slate-400">
+                                        <span>Equivalente en USD:</span>
+                                        <span id="cart-total-usd">$0.00</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-5">
+                                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2">Método de Pago</label>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button onclick="selectPaymentMethod('EFECTIVO')" 
+                                                class="payment-method p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border-2 border-transparent transition-all active:scale-95"
+                                                data-method="EFECTIVO">
+                                            💵 Efectivo
+                                        </button>
+                                        <button onclick="selectPaymentMethod('PAGO MOVIL')" 
+                                                class="payment-method p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border-2 border-transparent transition-all active:scale-95"
+                                                data-method="PAGO MOVIL">
+                                            📲 Pago Móvil
+                                        </button>
+                                        <button onclick="selectPaymentMethod('DIVISAS')" 
+                                                class="payment-method p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 hover:bg-green-50 hover:text-green-700 hover:border-green-300 border-2 border-transparent transition-all active:scale-95"
+                                                data-method="DIVISAS">
+                                            🇺🇸 Divisas
+                                        </button>
+                                        <button onclick="selectPaymentMethod('MIXTO')" 
+                                                class="payment-method p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 border-2 border-transparent transition-all active:scale-95"
+                                                data-method="MIXTO">
+                                            🔄 Mixto
+                                        </button>
+                                    </div>
+                                    <input type="hidden" id="payment-method" value="EFECTIVO">
+                                </div>
+                                
+                                <div class="space-y-3">
+                                    <button id="btn-cobrar" onclick="processSale(document.getElementById('payment-method').value)" 
+                                            class="w-full gradient-primary text-white py-4 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                        <i data-lucide="credit-card" class="w-5 h-5"></i>
+                                        <span class="text-sm uppercase tracking-wide">PROCESAR VENTA</span>
+                                    </button>
+                                    <button onclick="cancelSale()" 
+                                            class="w-full bg-slate-100 text-slate-600 py-3 rounded-xl font-medium hover:bg-red-50 hover:text-red-600 transition-all duration-200 flex items-center justify-center gap-2">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        <span class="text-xs uppercase">Vaciar Carrito</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sección Inventario -->
+            <section id="inventory" class="tab-content">
+                <div class="bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden hover-lift">
+                    <!-- Encabezado del Inventario -->
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                            <div>
+                                <h2 class="font-black text-slate-800 text-xl md:text-2xl mb-2">Gestión de Inventario</h2>
+                                <p class="text-slate-500 text-sm">Control total de stock, precios y categorías</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="openModal()" 
+                                        class="gradient-primary text-white px-5 py-3 rounded-xl font-bold hover:shadow-lg transition-all duration-200 flex items-center gap-2">
+                                    <i data-lucide="plus" class="w-4 h-4"></i>
+                                    <span class="text-xs uppercase">Nuevo Producto</span>
+                                </button>
+                                <label class="bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold hover:bg-emerald-700 cursor-pointer transition-all duration-200 flex items-center gap-2">
+                                    <i data-lucide="upload" class="w-4 h-4"></i>
+                                    <span class="text-xs uppercase">Importar Excel</span>
+                                    <input type="file" id="excel-input" hidden accept=".xlsx, .xls">
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- Filtros y Búsqueda -->
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="renderInventory('all')" 
+                                        class="filter-btn active px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-slate-900 transition-all duration-200"
+                                        data-filter="all">
+                                    Todos los Productos
+                                </button>
+                                <button onclick="renderInventory('low')" 
+                                        class="filter-btn px-4 py-2 bg-amber-100 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-200 transition-all duration-200"
+                                        data-filter="low">
+                                    <i data-lucide="alert-triangle" class="w-3 h-3 inline mr-1"></i>
+                                    Stock Bajo
+                                </button>
+                                <button onclick="renderInventory('out')" 
+                                        class="filter-btn px-4 py-2 bg-red-100 text-red-800 text-xs font-bold rounded-lg hover:bg-red-200 transition-all duration-200"
+                                        data-filter="out">
+                                    <i data-lucide="x-circle" class="w-3 h-3 inline mr-1"></i>
+                                    Agotados
+                                </button>
+                            </div>
+                            <div class="relative flex-1 md:max-w-md">
+                                <i data-lucide="search" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                                <input type="text" id="inventory-search" oninput="filterInventory()" 
+                                       placeholder="BUSCAR POR NOMBRE, SKU O CATEGORÍA..." 
+                                       class="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-indigo-500 transition-all duration-200">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tabla de Inventario -->
+                    <div class="scroll-container custom-scrollbar">
+                        <table class="w-full text-left">
+                            <thead class="sticky top-0 bg-white border-b border-slate-100 shadow-sm">
+                                <tr>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Producto</th>
+                                    <th class="p-4 text-center text-xs font-black text-slate-500 uppercase tracking-wider">Stock</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Precio USD</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Precio Bs</th>
+                                    <th class="p-4 text-right text-xs font-black text-slate-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table-body" class="divide-y divide-slate-100">
+                                <!-- Los productos se cargan dinámicamente aquí -->
+                                <tr>
+                                    <td colspan="5" class="p-12 text-center">
+                                        <div class="flex flex-col items-center justify-center text-slate-400">
+                                            <i data-lucide="package" class="w-12 h-12 mb-4 opacity-50"></i>
+                                            <span class="text-sm font-medium">Cargando inventario...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sección Reportes -->
+            <section id="reports" class="tab-content">
+                <!-- Resumen de Caja -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="gradient-primary text-white p-6 md:p-8 rounded-3xl shadow-xl hover-lift">
+                        <div class="flex items-center justify-between mb-4">
+                            <i data-lucide="dollar-sign" class="w-8 h-8 opacity-80"></i>
+                            <span class="text-xs font-bold bg-white/20 px-3 py-1 rounded-full">HOY</span>
+                        </div>
+                        <p class="text-sm font-bold uppercase tracking-wider opacity-90">Caja en Dólares</p>
+                        <h2 id="total-day-usd" class="text-3xl md:text-4xl font-black mt-2">$0.00</h2>
+                    </div>
+                    
+                    <div class="bg-white p-6 md:p-8 rounded-3xl shadow-lg border border-slate-200 hover-lift">
+                        <div class="flex items-center justify-between mb-4">
+                            <i data-lucide="trending-up" class="w-8 h-8 text-indigo-600"></i>
+                            <span class="text-xs font-bold text-slate-600">CON TASA BCV</span>
+                        </div>
+                        <p class="text-sm font-bold text-slate-500 uppercase tracking-wider">Caja en Bolívares</p>
+                        <h2 id="total-day-ves" class="text-3xl md:text-4xl font-black mt-2 text-slate-800">0.00 Bs</h2>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-6 md:p-8 rounded-3xl shadow-xl hover-lift">
+                        <div class="flex items-center justify-between mb-4">
+                            <i data-lucide="receipt" class="w-8 h-8 opacity-80"></i>
+                            <span id="total-transactions" class="text-2xl font-black">0</span>
+                        </div>
+                        <p class="text-sm font-bold uppercase tracking-wider opacity-90">Transacciones Hoy</p>
+                        <p class="text-xs opacity-75 mt-1">Ventas procesadas</p>
+                    </div>
+                </div>
+
+                <!-- Tabla de Reportes -->
+                <div class="bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden hover-lift">
+                    <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div class="flex items-center gap-4 w-full md:w-auto">
+                                <div class="relative">
+                                    <i data-lucide="calendar" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                                    <input type="date" id="report-date" onchange="loadDailyReport()" 
+                                           class="pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-all duration-200">
+                                </div>
+                                <div class="relative flex-1 md:w-64">
+                                    <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4"></i>
+                                    <input type="text" id="report-search" oninput="filterReports()" 
+                                           placeholder="FILTRAR VENTAS..." 
+                                           class="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-indigo-500 transition-all duration-200">
+                                </div>
+                            </div>
+                        <button onclick="openCloseReportModal()" class="w-full md:w-auto gradient-primary text-white px-6 py-3 rounded-xl font-bold hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <span class="text-xs uppercase">Exportar Reporte</span>
+                        </button>
+                        </div>
+                    </div>
+
+                    <div class="scroll-container custom-scrollbar">
+                        <table class="w-full text-left" id="report-table">
+                            <thead class="sticky top-0 bg-white border-b border-slate-100 shadow-sm">
+                                <tr>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Factura</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Hora</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Items</th>
+                                    <th class="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Total USD</th>
+                                    <th class="p-4 text-right text-xs font-black text-slate-500 uppercase tracking-wider">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="daily-sales-table" class="divide-y divide-slate-100">
+                                <!-- Los reportes se cargan dinámicamente aquí -->
+                                <tr>
+                                    <td colspan="5" class="p-12 text-center">
+                                        <div class="flex flex-col items-center justify-center text-slate-400">
+                                            <i data-lucide="bar-chart-3" class="w-12 h-12 mb-4 opacity-50"></i>
+                                            <span class="text-sm font-medium">Seleccione una fecha para cargar reportes</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+ <!-- Modal de Selección de Cierre -->
+<div id="close-report-modal" class="modal">
+    <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200">
+        
+        <!-- Encabezado -->
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+                <i data-lucide="file-text" class="w-8 h-8 text-white"></i>
+            </div>
+            <h2 class="text-lg font-black text-slate-800 mb-2">Generar Reporte de Cierre</h2>
+            <p class="text-xs text-slate-500">Seleccione el tipo de reporte</p>
+            <p class="text-xs text-slate-400 mt-1">Fecha: <span id="close-report-date"></span></p>
+        </div>
+        
+        <!-- Opciones -->
+        <div class="space-y-4 mb-6">
+            <!-- Cierre Simple -->
+            <button onclick="generateSimpleCloseReport()" class="w-full p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl text-left hover:border-blue-400 hover:from-blue-100 transition-all duration-200 group">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                        <i data-lucide="file" class="w-5 h-5 text-blue-600"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-blue-800 text-sm mb-1">Cierre Simple</h3>
+                        <p class="text-xs text-blue-600">PDF básico con resumen esencial</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-blue-400 group-hover:text-blue-600 transition-colors"></i>
+                </div>
+            </button>
+            
+            <!-- Cierre Detallado -->
+            <button onclick="generateDetailedCloseReport()" class="w-full p-5 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl text-left hover:border-indigo-400 hover:from-indigo-100 transition-all duration-200 group">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+                        <i data-lucide="file-text" class="w-5 h-5 text-indigo-600"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-indigo-800 text-sm mb-1">Cierre Detallado</h3>
+                        <p class="text-xs text-indigo-600">PDF completo con gráficos y análisis</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-5 h-5 text-indigo-400 group-hover:text-indigo-600 transition-colors"></i>
+                </div>
+            </button>
+        </div>
+        
+        <!-- Botón Cancelar -->
+        <button onclick="closeReportModal()" class="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all duration-200">
+            Cancelar
+        </button>
+    </div>
+</div>  
+
+    <!-- Modales (sin cambios sustanciales, pero con clases actualizadas) -->
+    <!-- Modal de Producto ------------------------------------------------->
+<!-- Modal de Producto - Rediseñado -->
+<div id="product-modal" class="modal">
+    <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200">
+        
+        <!-- Encabezado consistente -->
+        <div class="text-center mb-4">
+            <div class="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-indigo-200">
+                <i data-lucide="package" class="w-6 h-6 text-white"></i>
+            </div>
+            <h2 class="text-lg font-black text-slate-800 mb-1">Ficha de Producto</h2>
+            <p class="text-xs text-slate-500">Crear o editar producto</p>
+        </div>
+
+        <form id="product-form" class="space-y-3">
+            
+            <!-- Nombre del Producto -->
+            <div class="relative">
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Nombre del Producto</label>
+                <div class="relative">
+                    <div class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">
+                        <i data-lucide="tag" class="w-4 h-4"></i>
+                    </div>
+                    <input type="text" id="p-name" placeholder="EJ. HARINA PAN" required 
+                           class="w-full p-3 pl-12 border-2 border-slate-200 rounded-xl text-sm font-bold uppercase focus:border-indigo-500 focus:outline-none transition-all placeholder:normal-case">
+                </div>
+            </div>
+            
+            <!-- Código y Categoría en grid -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="relative">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Código SKU</label>
+                    <div class="relative">
+                        <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                            <i data-lucide="barcode" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" id="edit-product-id" placeholder="PROD-001" required 
+                               class="w-full p-3 pl-10 border-2 border-slate-200 rounded-xl text-xs font-mono font-bold uppercase focus:border-indigo-500 focus:outline-none transition-all">
+                    </div>
+                </div>
+                
+                <div class="relative">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Categoría</label>
+                    <div class="relative">
+                        <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                            <i data-lucide="folder" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" id="p-category" placeholder="GENERAL" required 
+                               class="w-full p-3 pl-10 border-2 border-slate-200 rounded-xl text-xs font-bold uppercase focus:border-indigo-500 focus:outline-none transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock y Precio en grid -->
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Stock -->
+                <div class="relative">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Stock</label>
+                    <div class="bg-slate-50 rounded-xl p-3 border-2 border-slate-200">
+                        <div class="flex items-center justify-center gap-1">
+                            <i data-lucide="package" class="w-4 h-4 text-slate-400"></i>
+                            <input type="number" id="p-stock" min="0" value="0" required 
+                                   class="w-full bg-transparent text-center text-lg font-black text-slate-700 outline-none">
+                        </div>
+                        <div class="text-[10px] text-slate-400 text-center mt-1">unidades</div>
+                    </div>
+                </div>
+                
+                <!-- Precio USD -->
+                <div class="relative">
+                    <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Precio USD</label>
+                    <div class="bg-emerald-50 rounded-xl p-3 border-2 border-emerald-200">
+                        <div class="flex items-center justify-center gap-1">
+                            <span class="text-sm font-black text-emerald-600">$</span>
+                            <input type="number" step="0.01" id="p-price" min="0" value="0" required 
+                                   class="w-full bg-transparent text-center text-lg font-black text-emerald-700 outline-none">
+                        </div>
+                        <div class="text-[10px] text-emerald-500 text-center mt-1">dólares</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Precio equivalente en Bs (opcional, muestra el cálculo) -->
+            <div id="product-price-ves" class="hidden">
+                <div class="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-600">Equivalente en Bs:</span>
+                        <span id="product-ves-amount" class="font-bold text-indigo-700">0.00 Bs</span>
+                    </div>
+                    <div class="text-[10px] text-indigo-400 text-right mt-1">
+                        Tasa: <span id="product-modal-rate">0.00</span> Bs/$
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones principales - Consistentes con otros modales -->
+            <div class="pt-4 space-y-2">
+                <button type="submit" id="btn-save-product" 
+                        class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 shadow-lg transition-all duration-200 flex items-center justify-center gap-2">
+                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                    <span class="text-sm uppercase tracking-wide">Guardar Producto</span>
+                </button>
+                
+                <button type="button" onclick="closeModal()" 
+                        class="w-full py-2 text-slate-400 font-bold text-xs uppercase tracking-wider hover:text-red-500 transition-colors flex items-center justify-center gap-1">
+                    <i data-lucide="x" class="w-3 h-3"></i>
+                    Cancelar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!--------------------------------------------------------------------------------->
+ <!-- Modal de Edición de Precio y Código -->
+<div id="price-modal" class="modal">
+    <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200">
+        
+        <!-- Encabezado -->
+        <div class="text-center mb-4">
+            <div class="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <i data-lucide="tag" class="w-6 h-6 text-amber-600"></i>
+            </div>
+            <h2 class="text-lg font-black text-slate-800 mb-1">Editar Producto</h2>
+            <p class="text-xs text-slate-500">Actualizar precio y código</p>
+        </div>
+        
+        <!-- Información del producto -->
+        <div class="mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <p class="text-sm font-medium text-slate-700 mb-1" id="price-product-name">Cargando...</p>
+            <div class="flex justify-between text-xs text-slate-500">
+                <span>Stock actual: <span id="price-current-stock">0</span></span>
+                <span>Categoría: <span id="price-category">general</span></span>
+            </div>
+        </div>
+        
+        <!-- Código/SKU -->
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Código / SKU</label>
+            <div class="relative">
+                <div class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">
+                    <i data-lucide="barcode" class="w-4 h-4"></i>
+                </div>
+                <input type="text" id="new-product-id" 
+                       class="w-full p-3 pl-10 border-2 border-slate-200 rounded-xl text-sm font-mono uppercase focus:border-indigo-500 focus:outline-none transition-all">
+            </div>
+        </div>
+        
+        <!-- Precio en USD -->
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Precio en Dólares</label>
+            <div class="relative">
+                <div class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 font-bold">$</div>
+                <input type="number" id="new-price-usd" step="0.01" min="0" 
+                       oninput="updateLivePriceVES()"
+                       class="w-full p-4 pl-10 border-2 border-slate-200 rounded-xl text-2xl font-bold text-center focus:border-amber-500 focus:outline-none transition-all">
+            </div>
+        </div>
+        
+        <!-- Precio en Bolívares (live update) -->
+        <div class="mb-6 p-4 bg-indigo-50 rounded-xl border-2 border-indigo-100">
+            <p class="text-xs font-black text-indigo-500 uppercase tracking-widest mb-1">Equivalente en Bolívares</p>
+            <div class="flex items-baseline justify-center gap-2">
+                <span id="live-price-ves" class="text-2xl font-black text-indigo-700">0.00</span>
+                <span class="text-sm font-bold text-indigo-500 uppercase">Bs</span>
+            </div>
+            <p class="text-xs text-indigo-400 text-center mt-1">
+                Tasa BCV: <span id="modal-current-rate" class="font-bold">0.00</span> Bs/$
+            </p>
+        </div>
+        
+        <!-- Botones -->
+        <div class="flex gap-3">
+            <button onclick="closePriceModal()" 
+                    class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="x" class="w-4 h-4"></i>
+                Cancelar
+            </button>
+            <button onclick="saveNewPrice()" 
+                    class="flex-1 bg-amber-600 text-white py-3 rounded-xl font-bold hover:bg-amber-700 shadow-lg shadow-amber-100 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                Actualizar
+            </button>
+        </div>
+    </div>
+</div>
+<!--------------------------------------------------------------------------------->
+  <!-- Modal de Reabastecimiento -->
+<div id="restock-modal" class="modal">
+    <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200">
+        
+        <!-- Encabezado -->
+        <div class="text-center mb-4">
+            <div class="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <i data-lucide="plus-circle" class="w-6 h-6 text-green-600"></i>
+            </div>
+            <h2 class="text-lg font-black text-slate-800 mb-1">Añadir Stock</h2>
+            <p class="text-xs text-slate-500">Incrementar inventario del producto</p>
+        </div>
+        
+        <!-- Información del producto -->
+        <div class="mb-5 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <p class="text-sm font-medium text-slate-700 mb-1" id="restock-product-name">Cargando...</p>
+            <div class="flex justify-between text-xs text-slate-500">
+                <span id="restock-product-code">Código: --</span>
+                <span id="restock-current-stock">Stock actual: 0</span>
+            </div>
+        </div>
+        
+        <!-- Cantidad a añadir -->
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Cantidad a Añadir</label>
+            <div class="relative">
+                <div class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">
+                    <i data-lucide="package" class="w-5 h-5"></i>
+                </div>
+                <input type="number" id="restock-qty" min="1" value="1" 
+                       class="w-full p-4 pl-12 border-2 border-slate-200 rounded-2xl text-2xl font-bold text-center focus:border-green-500 focus:outline-none transition-all">
+            </div>
+            <div class="flex justify-between mt-2">
+                <span class="text-xs text-slate-400">Mínimo: 1 unidad</span>
+                <span class="text-xs text-slate-400">Sin límite máximo</span>
+            </div>
+        </div>
+        
+        <!-- Botones de acción rápida -->
+        <div class="grid grid-cols-4 gap-2 mb-6">
+            <button onclick="setRestockQty(5)" class="p-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
+                +5
+            </button>
+            <button onclick="setRestockQty(10)" class="p-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
+                +10
+            </button>
+            <button onclick="setRestockQty(25)" class="p-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
+                +25
+            </button>
+            <button onclick="setRestockQty(100)" class="p-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors">
+                +100
+            </button>
+        </div>
+        
+        <!-- Botones principales -->
+        <div class="flex gap-3">
+            <button onclick="closeRestock()" 
+                    class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="x" class="w-4 h-4"></i>
+                Cancelar
+            </button>
+            <button onclick="saveRestock()" 
+                    class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-100 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                Confirmar
+            </button>
+        </div>
+        
+        <!-- Preview del nuevo stock -->
+        <div class="mt-5 pt-4 border-t border-slate-100">
+            <div class="flex justify-between items-center text-sm">
+                <span class="text-slate-600">Nuevo stock total:</span>
+                <span id="restock-new-total" class="text-lg font-black text-green-700">1</span>
+            </div>
+        </div>
+    </div>
+</div>
+<!--------------------------------------------------------------------------------->
+   <!-- Modal de Merma/Reducción -->
+<div id="reduce-modal" class="modal">
+    <div class="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl border border-slate-200">
+        
+        <!-- Encabezado con advertencia -->
+        <div class="text-center mb-4">
+            <div class="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <i data-lucide="alert-triangle" class="w-6 h-6 text-red-600"></i>
+            </div>
+            <h2 class="text-lg font-black text-slate-800 mb-1">Registrar Merma</h2>
+            <p class="text-xs text-slate-500">Reducir inventario por pérdida/daño</p>
+        </div>
+        
+        <!-- Información del producto -->
+        <div class="mb-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <p class="text-sm font-medium text-slate-700 mb-1" id="reduce-name">Cargando...</p>
+            <div class="flex justify-between text-xs text-slate-500">
+                <span id="reduce-product-code">Código: --</span>
+                <span id="reduce-current-stock">Stock actual: 0</span>
+            </div>
+        </div>
+        
+        <!-- Cantidad a reducir -->
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-slate-600 uppercase mb-2 tracking-wider">Cantidad a Reducir</label>
+            <div class="relative">
+                <div class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400">
+                    <i data-lucide="package-minus" class="w-5 h-5"></i>
+                </div>
+                <input type="number" id="reduce-qty" min="1" value="1" 
+                       class="w-full p-4 pl-12 border-2 border-slate-200 rounded-2xl text-2xl font-bold text-center focus:border-red-500 focus:outline-none transition-all">
+            </div>
+            <div class="flex justify-between mt-2">
+                <span class="text-xs text-slate-400">Mínimo: 1 unidad</span>
+                <span class="text-xs text-slate-400" id="reduce-max">Máximo: 0</span>
+            </div>
+            <div id="reduce-warning" class="text-xs font-bold text-red-600 mt-1"></div>
+        </div>
+        
+        <!-- Botones de cantidad rápida -->
+        <div class="grid grid-cols-4 gap-2 mb-6">
+            <button onclick="setReduceQty(1)" class="p-2 bg-red-50 text-red-700 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                -1
+            </button>
+            <button onclick="setReduceQty(5)" class="p-2 bg-red-50 text-red-700 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                -5
+            </button>
+            <button onclick="setReduceQty(10)" class="p-2 bg-red-50 text-red-700 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                -10
+            </button>
+            <button onclick="setReduceQty(25)" class="p-2 bg-red-50 text-red-700 rounded-lg text-sm font-bold hover:bg-red-100 transition-colors">
+                -25
+            </button>
+        </div>
+        
+        <!-- Botones principales -->
+        <div class="flex gap-3">
+            <button onclick="closeReduceStock()" 
+                    class="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="x" class="w-4 h-4"></i>
+                Cancelar
+            </button>
+            <button onclick="saveReduceStock()" 
+                    class="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-100 transition-all duration-200 flex items-center justify-center gap-2">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                Registrar Merma
+            </button>
+        </div>
+        
+        <!-- Preview del nuevo stock -->
+        <div class="mt-5 pt-4 border-t border-slate-100">
+            <div class="flex justify-between items-center text-sm">
+                <span class="text-slate-600">Nuevo stock total:</span>
+                <span id="reduce-new-total" class="text-lg font-black text-slate-700">0</span>
+            </div>
+        </div>
+    </div>
+</div>
+<!--------------------------------------------------------------------------------->
+    <!-- Modal de Tasa BCV Mejorado -->
+   <!-- Modal de Tasa BCV -->
+<div id="tasa-modal" class="fixed inset-0 z-[100] hidden bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden">
+        
+        <!-- Encabezado -->
+        <div class="bg-green-600 p-5 sm:p-6 text-white flex justify-between items-center">
+            <div>
+                <h3 class="font-black text-lg sm:text-xl uppercase tracking-tighter leading-none">Ajuste de Tasa</h3>
+                <p class="text-[10px] text-green-100 opacity-80 mt-1">Control total del cambio</p>
+            </div>
+            <button onclick="cerrarModalTasa()" class="hover:bg-green-700 p-2 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6">
+                    <path d="M18 6 6 18"></path>
+                    <path d="m6 6 12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Contenido -->
+        <div class="p-5 sm:p-8">
+            
+            <!-- Advertencia -->
+            <div class="mb-4 p-4 bg-red-50 border-l-[6px] border-red-500 rounded-r-2xl">
+                <div class="flex items-center gap-2 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="text-red-600">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span class="text-[12px] font-black text-red-700 uppercase">Aviso Crítico</span>
+                </div>
+                <p class="text-[12px] leading-snug text-red-800 font-bold">
+                    Tasa referencial de terceros. Verifique siempre en el 
+                    <a href="https://www.bcv.org.ve/" target="_blank" class="underline text-red-900 font-black">BCV (BANCO CENTRAL DE VENEZUELA)</a>.
+                </p>
+            </div>
+
+            <!-- Tasa de API -->
+            <div class="mb-5 p-5 bg-indigo-50 border-2 border-indigo-100 rounded-[2rem] flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 group cursor-pointer hover:bg-indigo-100 transition-all" onclick="syncManualInputWithAPI()">
+                <div class="flex flex-col gap-1">
+                    <span class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Tasa de la API</span>
+                    <div class="flex items-baseline gap-2">
+                        <span id="api-rate-hint" class="text-3xl font-black text-indigo-800 leading-none">--.--</span>
+                        <span class="text-[11px] font-bold text-indigo-400 uppercase">VES</span>
+                    </div>
+                    <span id="api-date-hint" class="text-[9px] font-extrabold text-indigo-500 mt-1 uppercase">Cargando...</span>
+                </div>
+                <div class="w-full sm:w-auto bg-indigo-600 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase text-center shadow-md">
+                    Usar Tasa
+                </div>
+            </div>
+
+            <!-- Input manual -->
+            <div class="mb-6">
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Introducir Tasa Manual</label>
+                <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-lg">Bs.</span>
+                    <input type="number" id="manual-tasa-input" step="0.01" 
+                           class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-3xl font-black text-slate-800 focus:border-green-500 focus:outline-none transition-all" 
+                           placeholder="0.00"
+                           value="">
+                </div>
+            </div>
+
+            <!-- Botones -->
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="cerrarModalTasa()" class="py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-50 transition-all uppercase text-[10px] tracking-widest">
+                    Volver
+                </button>
+                <button onclick="saveManualTasa()" class="bg-slate-900 py-4 rounded-2xl font-black text-white hover:bg-black shadow-xl shadow-slate-200 transition-all uppercase text-[10px] tracking-widest">
+                    Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Sistema de Notificaciones (Toasts) -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-3 w-full max-w-md"></div>
+
+    <!-- parche 1.0 -->
+   
+    <!-- Script principal -->
+    <script src="v_2.4.js"></script>
+    
+    
+    <!-- Script de inicialización para mejorar integración -->
+    <script>
+        // Inicialización mejorada
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mejoras en la experiencia de usuario
+            const style = document.createElement('style');
+            style.textContent = `
+                .tab-button.active {
+                    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+                    color: white;
+                    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+                }
+                
+                .filter-btn.active {
+                    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+                }
+                
+                .payment-method.active {
+                    background-color: #dbeafe;
+                    color: #1d4ed8;
+                    border-color: #3b82f6;
+                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+                }
+                
+                /* Mejora de focus para accesibilidad */
+                *:focus-visible {
+                    outline: 2px solid #4f46e5;
+                    outline-offset: 2px;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Inicializar íconos de Lucide
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+            
+            // Prevenir zoom en inputs en móviles
+            document.addEventListener('touchstart', function(e) {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    e.target.style.fontSize = '16px';
+                }
+            });
+            
+            // Mejorar el selector de método de pago
+            function selectPaymentMethod(method) {
+                const buttons = document.querySelectorAll('.payment-method');
+                buttons.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.method === method) {
+                        btn.classList.add('active');
+                    }
+                });
+                document.getElementById('payment-method').value = method;
+            }
+            
+            // Exponer función globalmente
+            window.selectPaymentMethod = selectPaymentMethod;
+            
+            // Inicializar con método por defecto
+            selectPaymentMethod('EFECTIVO');
+        });
+    </script>
+</body>
+</html>
