@@ -741,6 +741,10 @@
             crearFilaProducto(producto) {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-50';
+
+                // Formateamos la fecha de creación que viene de PocketBase (created)
+                const fechaRegistro = producto.created ? new Date(producto.created).toLocaleDateString() : '---';
+
                 tr.innerHTML = `
                     <td class="p-4">
                         <div>
@@ -755,6 +759,9 @@
                         <span class="badge ${producto.stock > 10 ? 'badge-success' : producto.stock > 0 ? 'badge-warning' : 'badge-danger'}">
                             ${producto.stock} unidades
                         </span>
+                    </td>
+                    <td class="p-4">
+                        <span class="text-sm text-slate-500 font-medium">${fechaRegistro}</span>
                     </td>
                     <td class="p-4">
                         <span class="font-bold text-slate-800">${Sistema.formatearMoneda(producto.price_usd)}</span>
@@ -986,16 +993,18 @@ const Reportes = {
         }
     },
 
+    //tabladinamica de renderiza de inventario
+    // --- DENTRO DE Reportes.renderizarTabla(ventas) ---   
     renderizarTabla(ventas) {
         const container = document.getElementById('salesTable');
         if (!container) return;
-
+        
         if (ventas.length === 0) {
             container.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Sin ventas registradas en esta fecha.</td></tr>`;
             return;
         }
-        // rederizado de las factura 
-    container.innerHTML = ventas.map(v => `
+    
+        container.innerHTML = ventas.map(v => `
             <tr class="hover:bg-slate-50 border-b border-slate-100 transition-colors">
                 <td class="p-4 font-mono text-xs font-bold text-slate-700">
                     ${v.n_factura || v.id.slice(0,8)}
@@ -1003,9 +1012,13 @@ const Reportes = {
                 <td class="p-4 text-sm text-slate-500">
                     ${new Date(v.created).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', hour12: true})}
                 </td>
-                <td class="p-4 text-sm font-medium text-slate-600">
-                    ${v.user_email || 'Mostrador'}
+                
+                <td class="p-4 text-sm">
+                    <span class="px-2 py-1 rounded-lg font-bold text-[10px] uppercase ${this.obtenerColorPago(v.payment_method)}">
+                        ${v.payment_method || 'EFECTIVO'}
+                    </span>
                 </td>
+        
                 <td class="p-4 text-base font-black text-emerald-600">
                     ${Sistema.formatearMoneda(v.total_usd)}
                 </td>
@@ -1014,16 +1027,27 @@ const Reportes = {
                 </td>
                 <td class="p-4">
                     <div class="flex justify-center items-center">
-                        <button onclick="Reportes.verDetalleVenta('${v.id}')" 
-                                class="p-2 hover:bg-indigo-100 rounded-xl text-primary transition-all flex items-center justify-center border border-transparent hover:border-indigo-200">
+                        <button onclick="Reportes.verDetalleVenta('${v.id}')" class="p-2 hover:bg-indigo-100 rounded-xl text-primary transition-all flex items-center justify-center border border-transparent hover:border-indigo-200">
                             <i data-lucide="eye" class="w-5 h-5"></i>
                         </button>
                     </div>
                 </td>
             </tr>
-            `).join('');
-        
+        `).join('');
         lucide.createIcons();
+    },
+    
+    //  FUNCIÓN de renderizarTabla para manejar los colores
+    obtenerColorPago(metodo) {
+        const colores = {
+            'EFECTIVO': 'bg-emerald-100 text-emerald-700',
+            'PAGO MOVIL': 'bg-blue-100 text-blue-700',
+            'DEBITO': 'bg-cyan-100 text-cyan-700 border border-cyan-200', // <-- Nuevo color
+            'ZELLE': 'bg-purple-100 text-purple-700',
+            'TRANSFERENCIA': 'bg-slate-100 text-slate-700',
+            'DIVISAS': 'bg-amber-100 text-amber-700'
+        };
+        return colores[metodo] || 'bg-slate-100 text-slate-700';
     },
 
     // logica del boton para descargar pdf 

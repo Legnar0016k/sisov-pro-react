@@ -353,3 +353,18 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 
 ### Corregido
 - Jerarquía visual: Se ajustó el tamaño de la fecha en el header a 11px para optimizar la lectura sin romper el layout.
+
+- **Ventas:** Reemplazado método de pago "Mixto" por "Débito" para mejorar la claridad del usuario.
+- **UI:** Añadido esquema de colores y bordes para el distintivo de pago "DÉBITO" en el historial de reportes.
+
+## [2026-02-11] - Optimización de Métodos de Pago y Limpieza de UI
+### Añadido
+- Nuevo método de pago "DÉBITO" con identificador visual (badge) color cian en el historial de reportes.
+
+### Cambiado
+- **Ventas:** Se eliminó el método de pago "MIXTO" y se sustituyó por "DÉBITO" en la interfaz de facturación para mayor claridad operativa.
+- **Reportes:** Se sustituyó la columna "Cliente" (que mostraba el email del usuario logueado) por la columna "Método", visualizando el tipo de pago de cada transacción.
+- **Inventario:** Integración de la columna "F. Registro" en la tabla de productos para mostrar la fecha de creación desde PocketBase.
+
+### Eliminado
+- Referencias redundantes al email del usuario en las tablas de historial de ventas.
