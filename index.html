@@ -165,14 +165,15 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- hora local -->
-                    <div class="flex items-center bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-2 rounded-xl shadow-sm">
-                            <div class="flex flex-col leading-none mr-3 border-r border-amber-200 pr-3">
-                            <span class="text-[8px] font-bold text-amber-700 uppercase tracking-tighter">HORA VZLA</span>
+                        <!-- hora local con modal a prueba de ciegos -->
+                    <div onclick="TimeModule.mostrarInforme()" class="flex items-center bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-3 py-2 rounded-xl shadow-sm cursor-pointer hover:scale-105 transition-transform active:opacity-80">
+                        <div class="flex flex-col justify-center leading-tight mr-3 border-r border-amber-200 pr-3 text-right">
+                            <span id="headerDate" class="text-[11px] font-black text-amber-600 tracking-tight">--/--/----</span>
+                            <span class="text-[7px] font-bold text-amber-700 uppercase tracking-widest opacity-80">HORA VZLA</span>
                         </div>
                         <div class="flex items-baseline gap-1">
                             <span id="headerClock" class="text-lg font-black text-amber-800 tracking-tight">00:00:00</span>
-                             <span id="clockPeriod" class="text-[10px] font-bold text-amber-700 uppercase">--</span>
+                            <span id="clockPeriod" class="text-[10px] font-bold text-amber-700 uppercase">--</span>
                         </div>
                     </div>
                         
@@ -731,10 +732,39 @@
             <i data-lucide="message-circle" class="w-6 h-6"></i>
         </button>
     </div>
+
+    <!-- modal para visualizar la hora, hora para ciegos jajaja  -->
+    <div id="modalTiempo" class="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl transform transition-all border-4 border-amber-500">
+        <div class="bg-amber-500 p-6 text-center">
+            <h2 class="text-white font-black text-2xl uppercase tracking-tighter">Informe de Tiempo Oficial</h2>
+            <p class="text-amber-100 text-sm font-bold uppercase">Sincronizado con Railway API - Venezuela</p>
+        </div>
+        <div class="p-10 text-center space-y-8">
+            <div class="space-y-2">
+                <p class="text-slate-400 font-bold uppercase text-xs tracking-widest">Fecha del Sistema</p>
+                <p id="bigDate" class="text-5xl font-black text-slate-800 tracking-tighter">--/--/----</p>
+            </div>
+            <hr class="border-slate-100">
+            <div class="space-y-2">
+                <p class="text-slate-400 font-bold uppercase text-xs tracking-widest">Hora Exacta</p>
+                <div class="flex items-center justify-center gap-4">
+                    <p id="bigClock" class="text-7xl font-black text-amber-600 tabular-nums">00:00:00</p>
+                    <p id="bigPeriod" class="text-2xl font-black text-amber-500 uppercase">--</p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('modalTiempo').classList.add('hidden')" 
+                    class="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-5 rounded-2xl text-xl transition-colors shadow-lg">
+                ENTENDIDO, GRACIAS
+            </button>
+        </div>
+    </div>
+</div>
     
     <!-- Scripts del Sistema -->
      
     <script src="core.js"></script>
+    <script src="time-module.js"></script>
 
     <!-- se comenta el script debido a que se ha movido a un archivo externo llamado core.js para mejorar la organización y mantenibilidad del código. Este cambio permite separar la lógica principal del sistema de la estructura HTML, facilitando futuras modificaciones y depuraciones sin afectar la presentación visual del sitio. Además, al tener el código JavaScript en un archivo dedicado, se mejora la legibilidad y se promueve una mejor práctica de desarrollo web al mantener el código modularizado. -->
     <script>

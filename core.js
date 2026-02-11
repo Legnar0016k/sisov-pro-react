@@ -273,23 +273,18 @@
                 }
             }, 
 
-             // --- NUEVO: Motor del Reloj Visual ---
+             // --- NUEVO: Motor del Reloj Visual --- se simplifica para pasar la carga a 
+             // TimeModule y evitar cálculos innecesarios en el Core
            iniciarRelojVisual(horaInicial) {
-                // Quitamos la Z para que el navegador no intente ser "inteligente"
                 let tiempoActual = new Date(horaInicial.replace('Z', ''));
-                    
+                
                 setInterval(() => {
                     tiempoActual.setSeconds(tiempoActual.getSeconds() + 1);
                     
-                    // Ahora el formato será 1 a 1 con la API
-                    const h = tiempoActual.getHours();
-                    const ampm = h >= 12 ? 'PM' : 'AM';
-                    const h12 = h % 12 || 12;
-                    const m = String(tiempoActual.getMinutes()).padStart(2, '0');
-                    const s = String(tiempoActual.getSeconds()).padStart(2, '0');
-                
-                    document.getElementById('headerClock').textContent = `${h12}:${m}:${s}`;
-                    document.getElementById('clockPeriod').textContent = ampm;
+                    // LLAMADA AL MÓDULO EXTERNO
+                    if (window.TimeModule) {
+                        TimeModule.actualizarUI(tiempoActual);
+                    }
                 }, 1000);
             },
             

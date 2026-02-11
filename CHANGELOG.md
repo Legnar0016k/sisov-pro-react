@@ -340,3 +340,16 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 
 ### Optimizado
 - Carga inicial: El sistema espera la sincronización de hora antes de procesar ventas o inventario.
+
+## [2026-02-11] - Modularización de UI y Modo de Visualización Detallada
+### Añadido
+- Nuevo archivo `time-module.js`: Centraliza la lógica de renderizado del reloj y manejo de fechas.
+- Modal de "Informe de Tiempo Oficial": Visualización de gran tamaño (Cegato-friendly) sincronizada con la API de Venezuela.
+- Efectos visuales interactivos (hover/scale) en el widget del reloj del header.
+
+### Cambiado
+- `core.js`: Simplificación del método `iniciarRelojVisual` delegando la actualización de UI al `TimeModule`.
+- `index.html`: Integración del nuevo script y actualización de la estructura del header para mejorar la legibilidad de la fecha.
+
+### Corregido
+- Jerarquía visual: Se ajustó el tamaño de la fecha en el header a 11px para optimizar la lectura sin romper el layout.
