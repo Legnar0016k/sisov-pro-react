@@ -1064,22 +1064,27 @@ nav {
                 }
             },
             
-            // Inicialización
+            
+           // Inicialización - Versión Optimizada por V.I.E.R.N.E.S.(11/02/2026)
             async inicializar() {
-                // Inicializar íconos
+                // 1. Sincronizar Reloj (Prioridad Máxima)
+                // Usamos await para que el sistema espere la hora real de Venezuela
+                await this.actualizarHoraServidor();
+                
+                // 2. Inicializar íconos
                 lucide.createIcons();
                 
-                // Verificar autenticación
+                // 3. Verificar autenticación
                 await this.verificarAutenticacion();
                 
-                // Cargar datos iniciales
+                // 4. Cargar datos iniciales 
+                // (Ahora cargarDatosIniciales ya sabrá exactamente qué fecha es hoy)
                 await this.cargarDatosIniciales();
                 
-                // Configurar eventos
+                // 5. Configurar eventos
                 this.configurarEventos();
                 
-                // Actualizar hora del servidor
-                this.actualizarHoraServidor();
+                console.log("%c[SISTEMA] Inicialización completa con hora sincronizada", "color: #10b981;");
             },
             
             // Autenticación
@@ -1285,9 +1290,25 @@ nav {
             },
             
             // Hora del servidor
-            actualizarHoraServidor() {
-                this.estado.config.serverTime = new Date();
+            // [Surgical Insertion] - Reemplazo de la función actualizarHoraServidor
+            // Busca la función actualizarHoraServidor() en el objeto Sistema
+            async actualizarHoraServidor() {
+                try {
+                    // REEMPLAZA ESTA URL por la que te dio Railway
+                    const response = await fetch('https://web-production-81e05.up.railway.app/hora-venezuela');
+                    const data = await response.json();
+                    
+                    if (data.ok && data.iso) {
+                        // Sincronizamos el tiempo del núcleo con la API Ninja
+                        this.estado.config.serverTime = new Date(data.iso);
+                        console.log("%c[SISTEMA] Hora sincronizada con éxito (API PROPIA)", "color: #10b981;");
+                    }
+                } catch (error) {
+                    console.error("Error sincronizando hora propia:", error);
+                    this.estado.config.serverTime = new Date();
+                }
             },
+            
             
             // Eventos
             configurarEventos() {
@@ -1597,8 +1618,13 @@ nav {
             
             async registrarVenta() {
                 try {
-                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+                    // Usamos la instancia global de pb para evitar reconexiones innecesarias
+                    const pb = window.pb || new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
+                    // [V.I.E.R.N.E.S. Inserción] - Generar fecha inmutable de Venezuela
+                    // Usamos el reloj sincronizado del sistema
+                    const fechaInmutable = Sistema.estado.config.serverTime.toISOString().split('T')[0];
+
                     // Preparar datos de la venta
                     const ventaData = {
                         user_id: Sistema.estado.usuario.id,
@@ -1608,17 +1634,19 @@ nav {
                         dolartoday: Sistema.estado.tasaBCV,
                         total_usd: parseFloat(this.calcularTotalUSD()),
                         total_ves: parseFloat(this.calcularTotalVES()),
-                        items: this.carrito.map(item => ({
+                        items: JSON.stringify(this.carrito.map(item => ({
                             producto: item.producto.name_p,
                             cantidad: item.cantidad,
                             precio_unitario: item.producto.price_usd,
                             subtotal: item.producto.price_usd * item.cantidad
-                        })),
+                        }))),
                         payment_method: this.metodoPago,
-                        payment_details: {}
+                        payment_details: {},
+                        // CAMPO CLAVE: Sentido horario inmutable venezolano
+                        id_fecha: fechaInmutable 
                     };
                     
-                    // Registrar venta
+                    // Registrar venta en la colección sales
                     await pb.collection('sales').create(ventaData);
                     
                     // Actualizar stock de productos
@@ -1628,37 +1656,42 @@ nav {
                             stock: nuevoStock
                         });
                         
-                        // Actualizar en estado local
+                        // Actualizar en estado local para reflejo inmediato en UI
                         const productoIndex = Sistema.estado.productos.findIndex(p => p.id === item.producto.id);
                         if (productoIndex >= 0) {
                             Sistema.estado.productos[productoIndex].stock = nuevoStock;
                         }
                     }
                     
-                    // Registrar en logs
+                    // Registrar en logs de sistema
                     await pb.collection('system_logs').create({
                         type: 'VENTA',
-                        message: `Venta procesada por ${Sistema.estado.usuario.nombre}`,
+                        message: `Venta procesada por ${Sistema.estado.usuario.nombre || Sistema.estado.usuario.email}`,
                         user: Sistema.estado.usuario.email,
                         context: {
                             factura: ventaData.n_factura,
                             total_usd: ventaData.total_usd,
-                            items: ventaData.items.length
+                            items_count: this.carrito.length,
+                            fecha_id: fechaInmutable
                         }
                     });
                     
-                    // Limpiar carrito
+                    // Limpiar carrito y resetear UI de ventas
                     this.carrito = [];
-                    this.actualizarCarritoUI();
+                    if (typeof this.actualizarCarritoUI === 'function') this.actualizarCarritoUI();
                     
-                    // Actualizar UI
-                    Ventas.renderizarProductos();
-                    Inventario.renderizarInventario();
+                    // Refrescar las vistas de la aplicación
+                    if (window.Ventas && Ventas.renderizarProductos) Ventas.renderizarProductos();
+                    if (window.Inventario && Inventario.cargarProductos) Inventario.cargarProductos();
+                    if (window.Reportes && Reportes.cargarEstadisticas) {
+                        // Forzamos actualización de estadísticas con la fecha de hoy
+                        Reportes.cargarEstadisticas(fechaInmutable);
+                    }
                     
                     Sistema.mostrarToast('Venta procesada exitosamente', 'success');
                     
                 } catch (error) {
-                    console.error('Error procesando venta:', error);
+                    console.error('[V.I.E.R.N.E.S.] Error procesando venta:', error);
                     Sistema.mostrarToast('Error al procesar la venta', 'error');
                 }
             },
@@ -1940,8 +1973,13 @@ const Reportes = {
 
     async cargarDatosVentas(fecha) {
         try {
-            // Filtro dinámico: busca desde el primer segundo hasta el último del día elegido
-            const filtro = `created >= "${fecha} 00:00:00" && created <= "${fecha} 23:59:59"`;
+            // [Micro-cirugía: Definición de la variable faltante]
+            // Si no viene fecha, usamos la del sistema sincronizada
+            const fechaConsulta = fecha || Sistema.estado.config.serverTime.toISOString().split('T')[0];
+
+            // Filtro dinámico: busca por el campo inmutable id_fecha
+            const filtro = `id_fecha = "${fechaConsulta}"`;
+            // const filtro = `created >= "${fecha} 00:00:00" && created <= "${fecha} 23:59:59"`;
             
             const ventas = await pb.collection('sales').getFullList({
                 filter: filtro,
@@ -2016,7 +2054,8 @@ const Reportes = {
         try {
             Sistema.mostrarToast('Generando informe profesional...', 'info');
             
-            const filtro = `created >= "${fechaReporte} 00:00:00" && created <= "${fechaReporte} 23:59:59"`;
+            const filtro = `id_fecha = "${fechaReporte}"`;
+            // const filtro = `created >= "${fechaReporte} 00:00:00" && created <= "${fechaReporte} 23:59:59"`;
             const ventas = await pb.collection('sales').getFullList({
                 filter: filtro,
                 sort: 'created',
@@ -2251,9 +2290,12 @@ const Reportes = {
     },
 
     // modal de facturacion //======================================================================================
-   async verDetalleVenta(ventaId) {
+    async verDetalleVenta(ventaId) {
         try {
             const venta = await pb.collection('sales').getOne(ventaId, { requestKey: null });
+            
+            // [Micro-cirugía: Inserción de lógica de fecha inmutable]
+            const fechaMostrar = venta.id_fecha || new Date(venta.created).toLocaleString();
             
             Swal.fire({
                 title: `Factura: ${venta.n_factura || venta.id}`,
@@ -2271,13 +2313,13 @@ const Reportes = {
                 </div>
 
                     <div class="text-left mt-4">
-                        <p><strong>Fecha:</strong> ${new Date(venta.created).toLocaleString()}</p>
+                        <p><strong>Fecha:</strong> ${fechaMostrar}</p>
                         <p><strong>Cliente:</strong> ${venta.user_email || 'test@test.com'}</p>
                         <p><strong>Método de pago:</strong> ${venta.payment_method}</p>
                         <hr class="my-3">
                         <p class="font-bold">Productos:</p>
                         <ul class="list-disc pl-4 mb-3">
-                            ${venta.items ? venta.items.map(item => 
+                            ${venta.items ? (typeof venta.items === 'string' ? JSON.parse(venta.items) : venta.items).map(item => 
                                 `<li>${item.producto} - ${item.cantidad} x ${Sistema.formatearMoneda(item.precio_unitario)}</li>`
                             ).join('') : '<li>Sin productos</li>'}
                         </ul>
@@ -2438,27 +2480,27 @@ const Reportes = {
         
     // ===== INICIALIZACIÓN (VERSIÓN CON PERSISTENCIA F5) =====
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log("%c[SISTEMA] Iniciando recuperación de núcleo...", "color: #4f46e5; font-weight: bold;");
+        console.log("%c[SISTEMA] Iniciando recuperación de núcleo...", "color: #4f46e5; font-weight: bold;");
 
 
-            Sistema.activarVentasManual = function(elemento) {
-    // 1. Ejecutar el cambio de pestaña original
-    this.cambiarTab('ventas');
-    
-    // 2. Desactivar el efecto visual llamativo
-    elemento.classList.remove('tab-atencion');
-    
-    // 3. FORZAR RENDERIZADO de productos e inventario
-    console.log("%c[ACCION] Activando renderizado manual de productos...", "color: #10b981; font-weight: bold;");
-    
-    if (window.Inventario && window.Inventario.cargarProductos) {
-        window.Inventario.cargarProductos();
-    }
-    
-    if (window.Reportes && window.Reportes.cargarEstadisticas) {
-        window.Reportes.cargarEstadisticas();
-    }
-};
+                        Sistema.activarVentasManual = function(elemento) {
+                // 1. Ejecutar el cambio de pestaña original
+                this.cambiarTab('ventas');
+                        
+                // 2. Desactivar el efecto visual llamativo
+                elemento.classList.remove('tab-atencion');
+                        
+                // 3. FORZAR RENDERIZADO de productos e inventario
+                console.log("%c[ACCION] Activando renderizado manual de productos...", "color: #10b981; font-weight: bold;");
+                        
+                if (window.Inventario && window.Inventario.cargarProductos) {
+                    window.Inventario.cargarProductos();
+                }
+
+                if (window.Reportes && window.Reportes.cargarEstadisticas) {
+                    window.Reportes.cargarEstadisticas();
+                }
+            };
             
             // 1. Persistencia Inmediata: Exponer objetos al window antes de cualquier await
             window.Sistema = Sistema;
@@ -2505,6 +2547,9 @@ const Reportes = {
             
             // 4. Lógica de recuperación post-F5
             try {
+
+                // NUEVA INSERCIÓN: Sincronizamos la hora oficial antes de cargar datos(11/02/2026)
+                // await Sistema.actualizarHoraServidor();
                 // Verificar sesión existente en el authStore
                 await Sistema.inicializar(); 
                 
@@ -2564,22 +2609,21 @@ const Reportes = {
         console.log("%c[NÚCLEO] Comunicación global activada", "color: #3b82f6; font-weight: bold;");
     </script>
 
-    <!-- Al final del body, antes de </body> -->
-<div id="floatingButtons" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-    <!-- Botón de crear usuario (solo admin) -->
-    <div id="createUserFloat" class="hidden">
-        <button onclick="window.location.href='crear-usuario.html'"
-                class="bg-gradient-to-r from-primary to-purple-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center">
-            <i data-lucide="user-plus" class="w-6 h-6"></i>
+        <!-- Al final del body, antes de </body> -->
+    <div id="floatingButtons" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        <!-- Botón de crear usuario (solo admin) -->
+        <div id="createUserFloat" class="hidden">
+            <button onclick="window.location.href='crear-usuario.html'"
+                    class="bg-gradient-to-r from-primary to-purple-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center">
+                <i data-lucide="user-plus" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <!-- Botón de ayuda/chat -->
+        <button class="bg-slate-800 text-white p-4 rounded-full shadow-lg hover:bg-slate-900 transition-colors">
+            <i data-lucide="message-circle" class="w-6 h-6"></i>
         </button>
     </div>
-    
-    <!-- Botón de ayuda/chat -->
-    <button class="bg-slate-800 text-white p-4 rounded-full shadow-lg hover:bg-slate-900 transition-colors">
-        <i data-lucide="message-circle" class="w-6 h-6"></i>
-    </button>
-</div>
-
 <script>
 // Mostrar solo si es admin
 if (Sistema.estado.usuario?.rol === 'admin') {

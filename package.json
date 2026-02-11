@@ -1,5 +1,29 @@
 {
   "dependencies": {
+    "axios": "^1.13.5",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "pocketbase": "^0.26.6"
-  }
+  },
+  "name": "sisov",
+  "version": "1.0.0",
+  "description": "![SISOV PRO Banner](https://img.shields.io/badge/SISOV-PRO-v3.0-blue)\r ![License](https://img.shields.io/badge/License-MIT-green)\r ![PocketBase](https://img.shields.io/badge/Backend-PocketBase-orange)\r ![Responsive](https://img.shields.io/badge/Design-Responsive-purple)",
+  "main": "patch_render_v1.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Legnar0016k/sisov-pro-react.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Legnar0016k/sisov-pro-react/issues"
+  },
+  "homepage": "https://github.com/Legnar0016k/sisov-pro-react#readme"
 }

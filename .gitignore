@@ -1,0 +1,6 @@
+# Escribe el contenido correcto (solo los nombres de archivos/carpetas)
+# Esto sobreescribe el archivo con el contenido correcto
+echo "node_modules/" > .gitignore
+echo "package-lock.json" >> .gitignore
+echo "package.json" >> .gitignore
+echo "Procfile" >> .gitignore
