@@ -368,3 +368,9 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 
 ### Eliminado
 - Referencias redundantes al email del usuario en las tablas de historial de ventas.
+
+## [2026-02-11] - Corrección de Enlace de Datos (Parche Vercel-Railway)
+### Arreglado
+- **Conectividad:** Implementado `pb.beforeSend` con `options.mode: 'cors'` para saltar bloqueos de seguridad del navegador al migrar a Vercel.
+- **Estabilidad:** Centralizada la URL de la base de datos en una constante `BASE_URL` para evitar discrepancias entre funciones.
+- **Configuración:** Sincronizada la "Application URL" en el núcleo del sistema para validar el nuevo dominio de producción.

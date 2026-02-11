@@ -3,6 +3,12 @@
 //======================================================//
 
   var pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
+  // --- ESTE ES EL PARCHE "LLAVE MAESTRA" ---
+// Esto modifica la forma en que se envían las peticiones para evitar bloqueos
+pb.beforeSend = function (url, options) {
+    options.mode = 'cors'; // Forzamos el modo cors
+    return { url, options };
+};
     window.pb = pb; // Esto le abre la puerta al parche
 
         // ===== SISTEMA PRINCIPAL =====
