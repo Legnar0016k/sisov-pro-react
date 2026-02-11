@@ -327,3 +327,16 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 - Error de `ReferenceError: fechaConsulta is not defined` en el módulo de reportes.
 - Desfase de fechas en el detalle de ventas (`verDetalleVenta`) mediante el uso de fechas inmutables.
 - Problema de cancelación de peticiones en PocketBase usando `requestKey: null`.
+
+## [2026-02-11] - Refactorización Estructural y Reloj Blindado
+### Añadido
+- Nuevo archivo `core.js` para centralizar toda la lógica del sistema.
+- Nuevo archivo `styles.css` para la gestión de estilos personalizados.
+- Motor de reloj visual sincronizado con API externa (Railway) con bypass de zona horaria local.
+
+### Cambiado
+- `index.html`: Limpieza de scripts internos y vinculación a módulos externos.
+- Sistema de tiempo: Ahora ignora la zona horaria del cliente para usar exclusivamente la de Venezuela (UTC-4).
+
+### Optimizado
+- Carga inicial: El sistema espera la sincronización de hora antes de procesar ventas o inventario.
