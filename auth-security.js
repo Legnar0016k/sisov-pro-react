@@ -12,12 +12,20 @@ const AuthSecurity = {
     },
 
     async inicializar() {
-        console.log("%c[SEGURIDAD] Vigilante de sesiones activado", "color: #ff0000; font-weight: bold;");
+        console.log("%c[SEGURIDAD] Vigilante activo", "color: #ff0000;");
         
-        // Si hay sesión iniciada, verificamos integridad
+        // 1. Si ya hay sesión (F5 o persistencia)
         if (window.pb.authStore.isValid) {
             await this.validarSesionUnica();
         }
+
+        // 2. ESCUCHA REACTIVA: Si el usuario hace login sin refrescar la página
+        window.pb.authStore.onChange((token, model) => {
+            if (token) {
+                console.log("[SEGURIDAD] Nueva sesión detectada, validando...");
+                this.validarSesionUnica();
+            }
+        });
     },
 //====================================================================================
     // Genera una huella única basada en el navegador y hardware
@@ -30,49 +38,37 @@ const AuthSecurity = {
 //====================================================================================
     async validarSesionUnica() {
         const user = window.pb.authStore.model;
-        if (!user) return; // Seguridad extra
+        if (!user) return;
 
         const fingerprintActual = this.generarFingerprint();
 
         try {
-            // Buscamos el estado actual usando el ID del authStore
-            const serverUser = await window.pb.collection('users').getOne(user.id, {
-                // Forzamos a que no use caché para tener el dato real del servidor
-                requestKey: null 
-            });
+            // Obtenemos datos frescos del servidor
+            const serverUser = await window.pb.collection('users').getOne(user.id, { requestKey: null });
 
-            console.log("[SEGURIDAD] Validando dispositivo:", fingerprintActual);
-
-            // 1. Bloqueo Multi-dispositivo
-            if (serverUser.session_id && serverUser.session_id !== fingerprintActual && serverUser.is_online) {
-                // Si el ID de sesión es distinto y figura como online, expulsamos
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Acceso Denegado',
-                    text: 'Esta cuenta ya tiene una sesión activa en otro dispositivo.',
-                    confirmButtonText: 'Entendido'
-                }).then(() => {
-                    this.cerrarSesionForzado();
-                });
-                return;
+            // VALIDACIÓN DE ADMIN (Tu caso específico)
+            if (serverUser.rol === 'admin') {
+                if (serverUser.is_online && serverUser.session_id !== fingerprintActual) {
+                    Swal.fire({
+                        title: '¡Acceso Denegado!',
+                        text: 'Ya hay un Administrador activo en otro dispositivo.',
+                        icon: 'error',
+                        confirmButtonText: 'Entendido'
+                    }).then(() => this.cerrarSesionForzado());
+                    return;
+                }
             }
 
-            // 2. Registro de nueva sesión
-            // Si llegamos aquí, es el mismo dispositivo o una sesión nueva permitida
+            // Si llegamos aquí, registramos el dispositivo de inmediato
             await window.pb.collection('users').update(user.id, {
                 session_id: fingerprintActual,
                 is_online: true
             });
-
-            // 3. Verificar límites de rol
-            await this.verificarCupos(serverUser.rol || 'usuario');
+            
+            console.log("%c[SEGURIDAD] Dispositivo vinculado con éxito", "color: #10b981;");
 
         } catch (error) {
-            console.error("[SEGURIDAD] Fallo de enlace con servidor de seguridad:", error);
-            // Si falla por 404 o permisos, es un riesgo: cerramos por precaución
-            if (error.status === 404 || error.status === 403) {
-                console.warn("Posible error de reglas API en PocketBase");
-            }
+            console.error("[SEGURIDAD] Error en validación:", error);
         }
     },
 //====================================================================================
