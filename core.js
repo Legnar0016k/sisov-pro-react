@@ -79,33 +79,47 @@ pb.beforeSend = function (url, options) {
                     pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
                     
                     
-                    // Autenticar
-                    const authData = await pb.collection('users').authWithPassword(email, password);
-                    
-                    if (authData && authData.token) {
-                        // Guardar datos
-                        this.estado.usuario = {
-                            id: authData.record.id,
-                            email: authData.record.email,
-                            nombre: authData.record.user_name || 'Usuario',
-                            rol: authData.record.user_role || 'user'
-                        };
-                        
-                        localStorage.setItem('sisov_token', authData.token);
-                        localStorage.setItem('sisov_user', JSON.stringify(this.estado.usuario));
-                        
-                        this.mostrarToast('Sesión iniciada correctamente', 'success');
-                        this.mostrarVistaPrincipal();
-                        
-                        return true;
+            // Autenticar
+            const authData = await pb.collection('users').authWithPassword(email, password);
+            
+                if (authData && authData.token) {
+                    // 1. --- ANCLAJE DE SEGURIDAD ATÓMICO ---
+                    // Llamamos a la neurona de seguridad antes de permitir el acceso a la UI
+                    if (window.AuthSecurity) {
+                     const accesoPermitido = await window.AuthSecurity.validarSesionUnica();
+                        if (!accesoPermitido) {
+                        // Si la seguridad detecta duplicado, detenemos el proceso aquí
+                        return false; 
                     }
+                }
+
+            // 2. --- PERSISTENCIA Y ESTADO ---
+            this.estado.usuario = {
+                id: authData.record.id,
+                email: authData.record.email,
+                nombre: authData.record.user_name || 'Usuario',
+                rol: authData.record.user_role || 'user'
+            };
+            
+            localStorage.setItem('sisov_token', authData.token);
+            localStorage.setItem('sisov_user', JSON.stringify(this.estado.usuario));
+                
+                // 3. --- ACTIVACIÓN DE INTERFAZ ---
+                this.mostrarToast('Sesión iniciada correctamente', 'success');
+                this.mostrarVistaPrincipal();
+                
+                // Hidratar el sistema tras el login exitoso
+                await this.inicializar();
+                
+                return true;
+            }
                 } catch (error) {
                     console.error('Error en inicio de sesión:', error);
                     this.mostrarToast('Credenciales incorrectas', 'error');
                 }
                 return false;
             },
-            
+            // logica para cerrar session 
             async cerrarSesion() {
                 Swal.fire({
                     title: '¿Cerrar sesión?',

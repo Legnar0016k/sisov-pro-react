@@ -12,7 +12,8 @@ const AuthSecurity = {
     },
 
     async inicializar() {
-        console.log("%c[SEGURIDAD] Vigilante activo", "color: #ff0000;");
+        window.AuthSecurity = this; // Exposición para el core.js
+        console.log("%c[SEGURIDAD] Vigilante de acceso sincronizado", "color: #ef4444; font-weight: bold;");
         
         // 1. Si ya hay sesión (F5 o persistencia)
         if (window.pb.authStore.isValid) {
@@ -36,39 +37,56 @@ const AuthSecurity = {
         return btoa(`${userAgent}-${screenRes}`).substring(0, 32);
     },
 //====================================================================================
-    async validarSesionUnica() {
+  async validarSesionUnica() {
         const user = window.pb.authStore.model;
-        if (!user) return;
+        if (!user) return false;
 
         const fingerprintActual = this.generarFingerprint();
 
         try {
-            // Obtenemos datos frescos del servidor
-            const serverUser = await window.pb.collection('users').getOne(user.id, { requestKey: null });
+            // Forzamos consulta limpia al servidor (sin caché)
+            const serverUser = await window.pb.collection('users').getOne(user.id, { $autoCancel: false });
 
-            // VALIDACIÓN DE ADMIN (Tu caso específico)
-            if (serverUser.rol === 'admin') {
-                if (serverUser.is_online && serverUser.session_id !== fingerprintActual) {
-                    Swal.fire({
-                        title: '¡Acceso Denegado!',
-                        text: 'Ya hay un Administrador activo en otro dispositivo.',
-                        icon: 'error',
-                        confirmButtonText: 'Entendido'
-                    }).then(() => this.cerrarSesionForzado());
-                    return;
-                }
+            // A) VALIDACIÓN DE SESIÓN DUPLICADA
+            if (serverUser.is_online && serverUser.session_id && serverUser.session_id !== fingerprintActual) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Acceso Restringido',
+                    text: 'Esta cuenta ya está activa en otro dispositivo o navegador.',
+                    confirmButtonText: 'Cerrar'
+                });
+                window.pb.authStore.clear(); // Limpiamos rastro
+                return false; // REBOTE
             }
 
-            // Si llegamos aquí, registramos el dispositivo de inmediato
+            // B) VALIDACIÓN DE CUPOS POR ROL
+            const activos = await window.pb.collection('users').getList(1, 1, {
+                filter: `user_role = "${serverUser.user_role}" && is_online = true && id != "${user.id}"`
+            });
+
+            const limite = this.LIMITES[serverUser.user_role] || 2;
+            if (activos.totalItems >= limite) {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: 'Límite Alcanzado',
+                    text: `Ya hay ${limite} sesiones de ${serverUser.user_role} activas.`,
+                });
+                window.pb.authStore.clear();
+                return false; // REBOTE
+            }
+
+            // C) REGISTRO EXITOSO: El dispositivo toma posesión de la cuenta
             await window.pb.collection('users').update(user.id, {
                 session_id: fingerprintActual,
                 is_online: true
             });
-            
-            console.log("%c[SEGURIDAD] Dispositivo vinculado con éxito", "color: #10b981;");
+
+            console.log("%c[SEGURIDAD] Dispositivo anclado y validado", "color: #10b981;");
+            return true; // PASO CONCEDIDO
 
         } catch (error) {
-            console.error("[SEGURIDAD] Error en validación:", error);
+            console.error("[SEGURIDAD] Error de enlace:", error);
+            return true; // Permitimos acceso si hay error de red para no bloquear al dueño
         }
     },
 //====================================================================================
