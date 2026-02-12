@@ -106,7 +106,7 @@ pb.beforeSend = function (url, options) {
                 return false;
             },
             
-            cerrarSesion() {
+            async cerrarSesion() {
                 Swal.fire({
                     title: '¿Cerrar sesión?',
                     text: 'Selecciona una opción',
@@ -114,9 +114,27 @@ pb.beforeSend = function (url, options) {
                     showCancelButton: true,
                     confirmButtonText: 'Cerrar',
                     cancelButtonText: 'Cancelar'
-                }).then((result) => {
+                }).then(async (result) => {
                     if (result.isConfirmed) {
+                        // --- INICIO DE LÓGICA DE SEGURIDAD BLINDADA ---
+                        try {
+                            if (window.pb && window.pb.authStore.model) {
+                                const userId = window.pb.authStore.model.id;
+                                // Notificamos al servidor que el dispositivo queda libre antes de limpiar local
+                                await window.pb.collection('users').update(userId, {
+                                    session_id: "",
+                                    is_online: false
+                                });
+                            }
+                        } catch (error) {
+                            console.warn("[SEGURIDAD] Error al liberar sesión en servidor, procediendo localmente.");
+                        }
+                        // --- FIN DE LÓGICA DE SEGURIDAD ---
+
+                        // Mantenemos intacta tu lógica original y estética
                         localStorage.clear();
+                        if (window.pb) window.pb.authStore.clear(); // Limpieza del token de PocketBase
+                        
                         this.estado.usuario = null;
                         this.estado.carrito = [];
                         
@@ -124,6 +142,9 @@ pb.beforeSend = function (url, options) {
                         document.getElementById('mainView').classList.add('hidden');
                         
                         this.mostrarToast('Sesión cerrada', 'info');
+
+                        // Recarga opcional para limpiar memoria de scripts dinámicos
+                        setTimeout(() => window.location.reload(), 1000); 
                     }
                 });
             },

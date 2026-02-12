@@ -14,6 +14,8 @@ const AppManager = {
         try {
             //modulo de tiempo
             await this.cargarNeurona('time-module.js');
+            // NUEVA NEURONA DE SEGURIDAD
+            await this.cargarNeurona('auth-security.js');
             
             
             this.verificarSincronizacion();

@@ -383,3 +383,13 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 ### Cambiado
 - **Estructura de Carga:** El sistema ahora utiliza un modelo híbrido; `core.js` se mantiene estático en el HTML para garantizar la disponibilidad inmediata del login, mientras que los módulos adicionales se cargan asíncronamente.
 - **Sincronización:** Refinamiento de la exposición global de objetos (`window.Sistema`, `window.Ventas`) para asegurar compatibilidad con eventos del DOM.
+
+## [2026-02-12] - Fase 1: Seguridad y Sesión Única
+### Añadido
+- **auth-security.js**: Nueva neurona de vigilancia para control de cupos (1 Admin, 4 Vendedores, 2 Usuarios).
+- **Fingerprinting**: Implementación de huella digital de dispositivo para evitar múltiples inicios de sesión con la misma cuenta.
+- **Estado Online**: Seguimiento en tiempo real de usuarios activos en la base de datos.
+
+### Cambiado
+- **core.js**: Micro-cirugía en `cerrarSesion` para incluir liberación de sesión en servidor y limpieza de `session_id` sin afectar la estética de SweetAlert2.
+- **app-manager.js**: Actualizado para inyectar la neurona de seguridad automáticamente al iniciar.
