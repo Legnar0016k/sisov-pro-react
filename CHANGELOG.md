@@ -374,3 +374,12 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 - **Conectividad:** Implementado `pb.beforeSend` con `options.mode: 'cors'` para saltar bloqueos de seguridad del navegador al migrar a Vercel.
 - **Estabilidad:** Centralizada la URL de la base de datos en una constante `BASE_URL` para evitar discrepancias entre funciones.
 - **Configuración:** Sincronizada la "Application URL" en el núcleo del sistema para validar el nuevo dominio de producción.
+
+## [2026-02-12] - Nueva Arquitectura Modular (Híbrida)
+### Añadido
+- **AppManager:** Implementación de la "Torre de Control" para la inyección dinámica de módulos secundarios (Neuronas).
+- **Módulos:** Migración de `time-module.js` a carga bajo demanda para optimizar el rendimiento inicial.
+
+### Cambiado
+- **Estructura de Carga:** El sistema ahora utiliza un modelo híbrido; `core.js` se mantiene estático en el HTML para garantizar la disponibilidad inmediata del login, mientras que los módulos adicionales se cargan asíncronamente.
+- **Sincronización:** Refinamiento de la exposición global de objetos (`window.Sistema`, `window.Ventas`) para asegurar compatibilidad con eventos del DOM.
