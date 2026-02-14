@@ -1,5 +1,11 @@
-# Dependencias (Carpeta pesada que causa errores)
+# Dependencias (Carpeta pesada que no se sube)
 node_modules/
+
+# --- SEGURIDAD CRÍTICA (Archivos Sensibles) ---
+# Bloqueamos el panel maestro y cualquier archivo de configuración sensible
+panel_maestro.html
+.env
+.env.*.local
 
 # Archivos de registro y errores
 npm-debug.log*
@@ -7,17 +13,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Entorno y Secretos (Seguridad)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
 # Sistema Operativo
 .DS_Store
 Thumbs.db
 
-# Otros (Opcional, según tus otras APIs)
+# Compilados y temporales
 dist/
 build/
+out/
+.next/
