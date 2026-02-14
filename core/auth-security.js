@@ -3,6 +3,18 @@
  * @description Neurona de Seguridad Blindada - Control de sesiones y jerarquías.
  */
 
+const LimpiezaProfunda = {
+    ejecutar() {
+        // Limpiamos estados temporales del Sistema pero mantenemos el Auth de PocketBase
+        if (window.Sistema) {
+            window.Sistema.estado.productos = [];
+            window.Sistema.estado.carrito = [];
+            window.Sistema.estado.ventas = [];
+        }
+        console.log("%c[SEGURIDAD] Espacio de trabajo desinfectado y listo.", "color: #fbbf24;");
+    }
+};
+
 const AuthSecurity = {
     // Límites definidos por el propietario
     LIMITES: {
@@ -89,36 +101,6 @@ const AuthSecurity = {
             return true; // Permitimos acceso si hay error de red para no bloquear al dueño
         }
     },
-//====================================================================================
-    // async validarSesionUnica() {
-    //     const user = window.pb.authStore.model;
-    //     const fingerprintActual = this.generarFingerprint();
-
-    //     try {
-    //         // Buscamos el estado actual del usuario en el servidor
-    //         const serverUser = await window.pb.collection('users').getOne(user.id);
-
-    //         // 1. Verificar si el dispositivo es el mismo
-    //         if (serverUser.session_id && serverUser.session_id !== fingerprintActual) {
-    //             alert("⚠️ SEGURIDAD: Esta cuenta está abierta en otro dispositivo. Se cerrará esta sesión.");
-    //             this.cerrarSesionForzado();
-    //             return;
-    //         }
-
-    //         // 2. Si no tiene session_id, se lo asignamos (Primer inicio de sesión)
-    //         if (!serverUser.session_id) {
-    //             await window.pb.collection('users').update(user.id, {
-    //                 session_id: fingerprintActual,
-    //                 is_online: true
-    //             });
-    //         }
-
-    //         this.verificarCupos(serverUser.rol);
-
-    //     } catch (error) {
-    //         console.error("[SEGURIDAD] Error validando integridad:", error);
-    //     }
-    // },
 
     async verificarCupos(rol) {
         try {

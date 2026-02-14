@@ -12,12 +12,13 @@ const AppManager = {
         console.log(`%c[APP-MANAGER] Torre de Control v${this.version} activada`, "color: #00ff00; font-weight: bold;");
         // Cargar neuronas base de forma secuencial
         try {
-            //modulo de tiempo
-            await this.cargarNeurona('time-module.js');
+            
             // NUEVA NEURONA DE SEGURIDAD
-            await this.cargarNeurona('auth-security.js');
+            await this.cargarNeurona('core/auth-security.js');
+              //modulo de tiempo
+            await this.cargarNeurona('core/time-module.js');
             
-            
+           
             this.verificarSincronizacion();
         } catch (error) {
             console.error("[APP-MANAGER] Fallo crítico en la carga de neuronas:", error);

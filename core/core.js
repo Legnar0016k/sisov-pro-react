@@ -2,6 +2,8 @@
 //======================CORE.JS=========================//
 //======================================================//
 
+
+
   var pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
   // --- ESTE ES EL PARCHE "LLAVE MAESTRA" ---
 // Esto modifica la forma en que se envían las peticiones para evitar bloqueos
@@ -25,8 +27,7 @@ pb.beforeSend = function (url, options) {
                     serverTime: null
                 }
             },
-            
-            
+
            // Inicialización - Versión Optimizada por V.I.E.R.N.E.S.(11/02/2026)
             async inicializar() {
                 
@@ -54,7 +55,16 @@ pb.beforeSend = function (url, options) {
                 this.configurarEventos();
                 
                 console.log("%c[SISTEMA] Inicialización completa con hora sincronizada", "color: #10b981;");
+
+                            // UBICACIÓN: core.js (Inicio del archivo)
+                window.refrescarIconos = function() {
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                };
             },
+
+            
             
             // Autenticación
             async verificarAutenticacion() {
@@ -626,6 +636,8 @@ pb.beforeSend = function (url, options) {
                         await this.registrarVenta();
                     }
                 });
+
+                
             },
             
             calcularTotalUSD() {
@@ -637,7 +649,7 @@ pb.beforeSend = function (url, options) {
             calcularTotalVES() {
                 return (this.calcularTotalUSD() * Sistema.estado.tasaBCV).toFixed(2);
             },
-            
+            //busca aqui
             async registrarVenta() {
                 try {
                     // Usamos la instancia global de pb para evitar reconexiones innecesarias
@@ -755,28 +767,70 @@ pb.beforeSend = function (url, options) {
         };
         
         // ===== MÓDULO DE INVENTARIO =====
-        const Inventario = {
-            async cargarProductos() {
-                try {
-                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
-                    const productos = await pb.collection('products').getFullList();
-                    Sistema.estado.productos = productos;
-                } catch (error) {
-                    console.error('Error cargando productos:', error);
-                    Sistema.mostrarToast('Error cargando productos', 'error');
-                }
-            },
+            const Inventario = {
+            // 1. Bandera de control para evitar colisiones de red
+            cargando: false, 
+            // 2. Hash de verificación para evitar re-renderizados inútiles
+            ultimoHash: "",
+                // UBICACIÓN: core.js -> Dentro del objeto donde resida cargarProductos
+               async cargarProductos() {
+            if (this.cargando) return;
             
+            try {
+                this.cargando = true;
+                const userId = window.pb.authStore.model?.id;
+                if (!userId) return;
+            
+                const records = await window.pb.collection('products').getFullList({
+                    filter: `created_by = "${userId}"`,
+                    sort: '-created',
+                    requestKey: 'carga_silo_unico'
+                });
+            
+                // Creamos la firma para comparar si los datos realmente cambiaron
+                const hashActual = JSON.stringify(records.map(p => p.id + p.updated));
+                
+                // Si el contenido es el mismo, cancelamos el proceso antes del renderizado
+                if (this.ultimoHash === hashActual) {
+                    this.cargando = false;
+                    return; 
+                }
+            
+                this.ultimoHash = hashActual;
+                Sistema.estado.productos = records;
+                
+                // Solo logueamos si hubo un cambio real
+                console.log(`%c[SILO] ${records.length} productos actualizados en memoria.`, "color: #10b981;");
+                
+                this.renderizarInventario();
+            
+            } catch (error) {
+                if (!error.isAbort) console.error("Error en silo:", error);
+            } finally {
+                this.cargando = false;
+            }
+        },
+            
+           // UBICACIÓN: core.js -> Inventario.renderizarInventario
+           
             renderizarInventario() {
                 const container = document.getElementById('inventoryTable');
                 if (!container) return;
-                
+
                 container.innerHTML = '';
-                
-                Sistema.estado.productos.forEach(producto => {
+
+                // Verificamos que existan productos antes de iterar
+                const productos = Sistema.estado.productos || [];
+
+                productos.forEach(producto => {
                     const row = this.crearFilaProducto(producto);
                     container.appendChild(row);
                 });
+            
+                // REPARACIÓN PROFESIONAL: Usamos la función global segura
+                if (typeof window.refrescarIconos === 'function') {
+                    window.refrescarIconos();
+                }
             },
             
             crearFilaProducto(producto) {
@@ -857,48 +911,55 @@ pb.beforeSend = function (url, options) {
             cerrarModalProducto() {
                 document.getElementById('modalProducto').classList.remove('active');
             },
+
             
+            //============================================================================
+// UBICACIÓN: core.js -> Objeto Inventario
+// ACCIÓN: Reemplazar función guardarProducto
+//============================================================================
+            // UBICACIÓN: core.js -> Inventario.guardarProducto
             async guardarProducto(event) {
-                event.preventDefault();
-                
+                if (event) event.preventDefault();
+
                 try {
-                    pb = new PocketBase('https://sisov-pro-react-production.up.railway.app');
-                    
+                    if (!window.pb.authStore.isValid) throw new Error("Sesión inválida");
+                
+                    const userId = window.pb.authStore.model.id;
+
                     const productoData = {
                         name_p: document.getElementById('productName').value,
                         id_p: document.getElementById('productSKU').value,
                         category: document.getElementById('productCategory').value,
                         price_usd: parseFloat(document.getElementById('productPrice').value),
-                        stock: parseInt(document.getElementById('productStock').value)
+                        stock: parseInt(document.getElementById('productStock').value),
+                        created_by: userId 
                     };
-                    
+
                     const productoId = document.getElementById('productId').value;
-                    
+
+                   console.log(`%c[INVENTARIO] producto ingresado en el inventario`, "color: #fbbf24;");
+                
                     if (productoId) {
-                        // Actualizar
-                        await pb.collection('products').update(productoId, productoData);
+                        await window.pb.collection('products').update(productoId, productoData);
                         Sistema.mostrarToast('Producto actualizado', 'success');
                     } else {
-                        // Crear nuevo
-                        await pb.collection('products').create(productoData);
-                        Sistema.mostrarToast('Producto creado', 'success');
+                        await window.pb.collection('products').create(productoData);
+                        Sistema.mostrarToast('Producto guardado', 'success');
                     }
-                    
-                    // Recargar productos
-                    await this.cargarProductos();
-                    
-                    // Actualizar UI
+
+                    await this.cargarProductos(); 
                     this.renderizarInventario();
-                    Ventas.renderizarProductos();
-                    
-                    // Cerrar modal
+                    if (window.Ventas) Ventas.renderizarProductos();
                     this.cerrarModalProducto();
-                    
+
                 } catch (error) {
-                    console.error('Error guardando producto:', error);
-                    Sistema.mostrarToast('Error guardando producto', 'error');
+                    // Solo dejamos el error logueado para depuración técnica en desarrollo
+                    // En producción, esto también debería ser manejado discretamente.
+                    console.error('Error de persistencia:', error.message);
+                    Sistema.mostrarToast('Error al procesar', 'error');
                 }
             },
+           
             
             async eliminarProducto(productoId) {
                 Swal.fire({
@@ -1637,11 +1698,6 @@ const Reportes = {
             
             lucide.createIcons();
             
-            // Actualización de iconos cada segundo para elementos dinámicos
-            setInterval(() => {
-                if (window.lucide) lucide.createIcons();
-            }, 1000);
-            
             console.log("%c[NÚCLEO] Sistema listo y persistente", "color: #10b981; font-weight: bold;");
         });
 
@@ -1652,4 +1708,19 @@ const Reportes = {
         window.Reportes = Reportes;
         window.Configuracion = Configuracion;
 
-        console.log("%c[NÚCLEO] Comunicación global activada", "color: #3b82f6; font-weight: bold;");
+// UBICACIÓN: Final de core.js
+window.SISOV_BOOT_COMPLETE = window.SISOV_BOOT_COMPLETE || false;
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Si AppManager ya tomó el control, el núcleo se queda en escucha pasiva
+    if (window.SISOV_BOOT_COMPLETE) {
+        console.log("%c[NÚCLEO] Control cedido a Torre de Control (AppManager)", "color: #8b5cf6;");
+        return;
+    }
+
+    // Solo inicializa si no hay orquestador presente (Fail-safe)
+    if (typeof AppManager === 'undefined' && window.pb.authStore.isValid) {
+        window.SISOV_BOOT_COMPLETE = true;
+        Sistema.inicializar();
+    }
+});

@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISOV PRO v3.0 | Crear Usuario</title>
+    
+    <!-- CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.21.1/dist/pocketbase.umd.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-dark: #4338ca;
+            --secondary-color: #10b981;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        
+        .glass-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .input-field {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .input-field:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+        }
+        
+        .role-badge {
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .role-badge.active {
+            border-color: var(--primary-color);
+            background: rgba(79, 70, 229, 0.1);
+        }
+        
+        .role-badge.admin {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05));
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        
+        .role-badge.vendedor {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.05));
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+        
+        .role-badge.user {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+        
+        .password-strength {
+            height: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        .strength-0 { width: 20%; background: #ef4444; }
+        .strength-1 { width: 40%; background: #f59e0b; }
+        .strength-2 { width: 60%; background: #eab308; }
+        .strength-3 { width: 80%; background: #84cc16; }
+        .strength-4 { width: 100%; background: #10b981; }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            font-size: 0.875rem;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .notification.success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .notification.error {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .notification.warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+        
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 640px) {
+            .glass-container {
+                margin: 1rem;
+                padding: 1.5rem !important;
+            }
+            
+            .mobile-stack {
+                flex-direction: column !important;
+            }
+        }
+        
+        @media (min-width: 641px) and (max-width: 1024px) {
+            .glass-container {
+                max-width: 90% !important;
+                margin: 2rem auto;
+            }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="glass-container rounded-3xl p-8 md:p-12 w-full max-w-2xl">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="flex justify-center mb-6">
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
+                    <i data-lucide="user-plus" class="w-10 h-10 text-white"></i>
+                </div>
+            </div>
+            <h1 class="text-4xl font-black mb-2 gradient-text">SISOV PRO</h1>
+            <p class="text-slate-400 text-sm uppercase tracking-wider font-medium">v3.0 | Crear Usuario</p>
+            <p class="text-slate-500 text-xs mt-2">Gestión de Accesos del Sistema</p>
+        </div>
+        
+        <!-- Formulario de Creación -->
+        <form id="createUserForm" class="space-y-6">
+            <!-- Información Personal -->
+            <div class="bg-slate-800/30 rounded-2xl p-6 border border-slate-700/30">
+                <h3 class="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                    <i data-lucide="user" class="w-5 h-5 text-indigo-400"></i>
+                    Información Personal
+                </h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-slate-300 text-sm font-medium mb-2" for="nombre">
+                            Nombre Completo
+                        </label>
+                        <div class="relative">
+                            <i data-lucide="user" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                            <input 
+                                type="text" 
+                                id="nombre" 
+                                required
+                                placeholder="John Doe"
+                                class="input-field w-full pl-12 pr-4 py-3 rounded-xl text-white placeholder-slate-500 outline-none focus:outline-none"
+                            >
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-slate-300 text-sm font-medium mb-2" for="email">
+                            Correo Electrónico
+                        </label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                            <input 
+                                type="email" 
+                                id="email" 
+                                required
+                                placeholder="usuario@empresa.com"
+                                class="input-field w-full pl-12 pr-4 py-3 rounded-xl text-white placeholder-slate-500 outline-none focus:outline-none"
+                            >
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tipo de Usuario -->
+            <div class="bg-slate-800/30 rounded-2xl p-6 border border-slate-700/30">
+                <h3 class="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                    <i data-lucide="shield" class="w-5 h-5 text-indigo-400"></i>
+                    Tipo de Usuario
+                </h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <button type="button" onclick="seleccionarRol('admin')" 
+                            class="role-badge admin p-4 rounded-xl text-center hover:opacity-90 transition-opacity">
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
+                                <i data-lucide="shield" class="w-6 h-6 text-white"></i>
+                            </div>
+                            <span class="font-bold text-white">Administrador</span>
+                            <span class="text-xs text-red-300">Acceso total al sistema</span>
+                        </div>
+                    </button>
+                    
+                    <button type="button" onclick="seleccionarRol('vendedor')" 
+                            class="role-badge vendedor p-4 rounded-xl text-center hover:opacity-90 transition-opacity">
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                <i data-lucide="shopping-cart" class="w-6 h-6 text-white"></i>
+                            </div>
+                            <span class="font-bold text-white">Vendedor</span>
+                            <span class="text-xs text-blue-300">Ventas e inventario</span>
+                        </div>
+                    </button>
+                    
+                    <button type="button" onclick="seleccionarRol('user')" 
+                            class="role-badge user p-4 rounded-xl text-center hover:opacity-90 transition-opacity">
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
+                                <i data-lucide="user-check" class="w-6 h-6 text-white"></i>
+                            </div>
+                            <span class="font-bold text-white">Usuario</span>
+                            <span class="text-xs text-emerald-300">Acceso básico</span>
+                        </div>
+                    </button>
+                </div>
+                
+                <input type="hidden" id="user_role" value="user" required>
+            </div>
+            
+            <!-- Contraseña -->
+            <div class="bg-slate-800/30 rounded-2xl p-6 border border-slate-700/30">
+                <h3 class="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                    <i data-lucide="lock" class="w-5 h-5 text-indigo-400"></i>
+                    Configuración de Contraseña
+                </h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-slate-300 text-sm font-medium mb-2" for="password">
+                            Contraseña
+                        </label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                            <input 
+                                type="password" 
+                                id="password" 
+                                required
+                                placeholder="••••••••"
+                                oninput="verificarFortalezaContrasena()"
+                                class="input-field w-full pl-12 pr-4 py-3 rounded-xl text-white placeholder-slate-500 outline-none focus:outline-none"
+                            >
+                            <button type="button" onclick="togglePasswordVisibility()" 
+                                    class="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white">
+                                <i data-lucide="eye" class="w-5 h-5" id="passwordToggleIcon"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Medidor de Fortaleza -->
+                        <div class="mt-2">
+                            <div class="flex justify-between text-xs text-slate-400 mb-1">
+                                <span>Fortaleza:</span>
+                                <span id="strengthText">Débil</span>
+                            </div>
+                            <div class="h-1 bg-slate-700 rounded-full overflow-hidden">
+                                <div id="passwordStrength" class="password-strength strength-0"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-slate-300 text-sm font-medium mb-2" for="confirmPassword">
+                            Confirmar Contraseña
+                        </label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                            <input 
+                                type="password" 
+                                id="confirmPassword" 
+                                required
+                                placeholder="••••••••"
+                                oninput="verificarCoincidenciaContrasena()"
+                                class="input-field w-full pl-12 pr-4 py-3 rounded-xl text-white placeholder-slate-500 outline-none focus:outline-none"
+                            >
+                            <div id="passwordMatch" class="absolute right-4 top-1/2 transform -translate-y-1/2 hidden">
+                                <i data-lucide="check" class="w-5 h-5 text-emerald-400"></i>
+                            </div>
+                        </div>
+                        <div id="passwordError" class="text-xs text-red-400 mt-1 hidden">
+                            Las contraseñas no coinciden
+                        </div>
+                    </div>
+                    
+                    <!-- Requisitos de Contraseña -->
+                    <div class="bg-slate-900/50 rounded-xl p-4 mt-4">
+                        <h4 class="text-sm font-bold text-slate-300 mb-2">Requisitos de seguridad:</h4>
+                        <ul class="text-xs text-slate-400 space-y-1">
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-3 h-3 text-emerald-400 hidden" id="reqLength"></i>
+                                <i data-lucide="x" class="w-3 h-3 text-red-400 hidden" id="reqLengthBad"></i>
+                                Mínimo 8 caracteres
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-3 h-3 text-emerald-400 hidden" id="reqUppercase"></i>
+                                <i data-lucide="x" class="w-3 h-3 text-red-400 hidden" id="reqUppercaseBad"></i>
+                                Al menos una mayúscula
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-3 h-3 text-emerald-400 hidden" id="reqLowercase"></i>
+                                <i data-lucide="x" class="w-3 h-3 text-red-400 hidden" id="reqLowercaseBad"></i>
+                                Al menos una minúscula
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-3 h-3 text-emerald-400 hidden" id="reqNumber"></i>
+                                <i data-lucide="x" class="w-3 h-3 text-red-400 hidden" id="reqNumberBad"></i>
+                                Al menos un número
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check" class="w-3 h-3 text-emerald-400 hidden" id="reqSpecial"></i>
+                                <i data-lucide="x" class="w-3 h-3 text-red-400 hidden" id="reqSpecialBad"></i>
+                                Al menos un carácter especial
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Configuración Adicional -->
+            <div class="bg-slate-800/30 rounded-2xl p-6 border border-slate-700/30">
+                <h3 class="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                    <i data-lucide="settings" class="w-5 h-5 text-indigo-400"></i>
+                    Configuración Adicional
+                </h3>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-slate-300 text-sm font-medium">Verificación por Email</label>
+                            <p class="text-xs text-slate-500">Enviar email de verificación al usuario</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="emailVerification" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-slate-300 text-sm font-medium">Usuario Activo</label>
+                            <p class="text-xs text-slate-500">El usuario podrá acceder inmediatamente</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="userActive" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botones de Acción -->
+          <div class="flex flex-col sm:flex-row gap-3 pt-4">
+    <button type="button" onclick="volverAlSistema()" 
+            class="group flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-slate-800 transition-all duration-300">
+        <i data-lucide="arrow-left" class="w-5 h-5 group-hover:-translate-x-1 transition-transform"></i>
+        <span>VOLVER AL SISTEMA</span>
+        <span class="text-xs opacity-70"></span>
+    </button>
+    
+    <button type="submit" 
+            id="createUserBtn"
+            class="flex-1 py-4 rounded-xl text-white font-bold flex items-center justify-center gap-3 btn-primary">
+        <i data-lucide="user-plus" class="w-5 h-5"></i>
+        <span>CREAR USUARIO</span>
+    </button>
+</div>
+        </form>
+        
+        <!-- Footer -->
+        <div class="mt-10 pt-6 border-t border-slate-800 text-center">
+            <p class="text-xs text-slate-500">
+                © 2024 SISOV PRO v3.0 - Gestión de Usuarios
+            </p>
+        </div>
+    </div>
+    
+    <!-- Script Principal -->
+    <script>
+        // Inicializar íconos
+        lucide.createIcons();
+        
+        // Estado global
+        const Estado = {
+            rolSeleccionado: 'user',
+            contrasenaValida: false,
+            contrasenasCoinciden: false
+        };
+        
+        // Configurar PocketBase
+        const PB_URL = 'https://sisov-pro-react-production.up.railway.app';
+        const pb = new PocketBase(PB_URL);
+
+        // Log estético para confirmar conexión
+        console.log("%c[INFO] Conectando a SISOV Cloud: " + PB_URL, "color: #3b82f6; font-weight: bold;");
+        
+        // Seleccionar rol
+        function seleccionarRol(rol) {
+            Estado.rolSeleccionado = rol;
+            document.getElementById('user_role').value = rol;
+            
+            // Remover clase active de todos
+            document.querySelectorAll('.role-badge').forEach(badge => {
+                badge.classList.remove('active');
+            });
+            
+            // Agregar active al seleccionado
+            const badgeSeleccionado = document.querySelector(`.role-badge.${rol}`);
+            if (badgeSeleccionado) {
+                badgeSeleccionado.classList.add('active');
+            }
+            
+            mostrarNotificacion(`Rol seleccionado: ${rol.toUpperCase()}`, 'info');
+        }
+        
+        // Verificar fortaleza de contraseña
+        function verificarFortalezaContrasena() {
+            const password = document.getElementById('password').value;
+            const strengthBar = document.getElementById('passwordStrength');
+            const strengthText = document.getElementById('strengthText');
+            
+            // Resetear todos los checks
+            resetPasswordRequirements();
+            
+            if (!password) {
+                strengthBar.className = 'password-strength strength-0';
+                strengthText.textContent = 'Débil';
+                Estado.contrasenaValida = false;
+                return;
+            }
+            
+            let score = 0;
+            const requirements = {
+                length: password.length >= 8,
+                uppercase: /[A-Z]/.test(password),
+                lowercase: /[a-z]/.test(password),
+                number: /[0-9]/.test(password),
+                special: /[^A-Za-z0-9]/.test(password)
+            };
+            
+            // Actualizar íconos de requisitos
+            Object.entries(requirements).forEach(([req, cumplido]) => {
+                const checkIcon = document.getElementById(`req${req.charAt(0).toUpperCase() + req.slice(1)}`);
+                const xIcon = document.getElementById(`req${req.charAt(0).toUpperCase() + req.slice(1)}Bad`);
+                
+                if (cumplido) {
+                    checkIcon.classList.remove('hidden');
+                    xIcon.classList.add('hidden');
+                    score++;
+                } else {
+                    checkIcon.classList.add('hidden');
+                    xIcon.classList.remove('hidden');
+                }
+            });
+            
+            // Actualizar barra de fortaleza
+            strengthBar.className = `password-strength strength-${score}`;
+            
+            // Actualizar texto
+            const niveles = ['Débil', 'Regular', 'Media', 'Buena', 'Excelente'];
+            strengthText.textContent = niveles[score];
+            
+            // Validar si cumple todos los requisitos
+            Estado.contrasenaValida = Object.values(requirements).every(req => req);
+            
+            // Verificar coincidencia si ya hay confirmación
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            if (confirmPassword) {
+                verificarCoincidenciaContrasena();
+            }
+        }
+        
+        function resetPasswordRequirements() {
+            document.querySelectorAll('[id^="req"]').forEach(el => {
+                el.classList.add('hidden');
+            });
+        }
+        
+        // Verificar coincidencia de contraseñas
+        function verificarCoincidenciaContrasena() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const matchIcon = document.getElementById('passwordMatch');
+            const errorText = document.getElementById('passwordError');
+            
+            if (!confirmPassword) {
+                matchIcon.classList.add('hidden');
+                errorText.classList.add('hidden');
+                Estado.contrasenasCoinciden = false;
+                return;
+            }
+            
+            if (password === confirmPassword) {
+                matchIcon.classList.remove('hidden');
+                errorText.classList.add('hidden');
+                Estado.contrasenasCoinciden = true;
+            } else {
+                matchIcon.classList.add('hidden');
+                errorText.classList.remove('hidden');
+                Estado.contrasenasCoinciden = false;
+            }
+        }
+        
+        // Mostrar/ocultar contraseña
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const confirmInput = document.getElementById('confirmPassword');
+            const icon = document.getElementById('passwordToggleIcon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                confirmInput.type = 'text';
+                icon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                passwordInput.type = 'password';
+                confirmInput.type = 'password';
+                icon.setAttribute('data-lucide', 'eye');
+            }
+            
+            lucide.createIcons();
+        }
+        
+        // Manejar creación de usuario
+        async function handleCreateUser(e) {
+            e.preventDefault();
+            
+            // Validaciones
+            if (!Estado.contrasenaValida) {
+                mostrarNotificacion('La contraseña no cumple los requisitos mínimos', 'error');
+                return;
+            }
+            
+            if (!Estado.contrasenasCoinciden) {
+                mostrarNotificacion('Las contraseñas no coinciden', 'error');
+                return;
+            }
+            
+            // Obtener datos del formulario
+            const userData = {
+                username: `user_${Math.random().toString(36).slice(2, 7)}`, // Esto soluciona el fallo en la nube
+                email: document.getElementById('email').value,
+                emailVisibility: false,
+                password: document.getElementById('password').value,
+                passwordConfirm: document.getElementById('confirmPassword').value,
+                user_name: document.getElementById('nombre').value,
+                user_role: document.getElementById('user_role').value,
+                verified: document.getElementById('emailVerification').checked ? false : true
+            };
+            
+            // Cambiar estado del botón
+            const originalHTML = document.getElementById('createUserBtn').innerHTML;
+            document.getElementById('createUserBtn').innerHTML = `
+                <i data-lucide="loader" class="w-5 h-5 animate-spin"></i>
+                <span>CREANDO...</span>
+            `;
+            document.getElementById('createUserBtn').disabled = true;
+            
+            try {
+                // Crear usuario en PocketBase
+                const record = await pb.collection('users').create(userData);
+                
+                // Si no requiere verificación, marcar como verificado
+                if (!document.getElementById('emailVerification').checked) {
+                    await pb.collection('users').update(record.id, {
+                        verified: true
+                    });
+                }
+                
+                // Registrar en logs
+                await pb.collection('system_logs').create({
+                    type: 'USER_CREATED',
+                    message: `Nuevo usuario creado: ${userData.user_name}`,
+                    user: 'Sistema',
+                    context: {
+                        email: userData.email,
+                        role: userData.user_role,
+                        verified: userData.verified
+                    }
+                });
+                
+                mostrarNotificacion('Usuario creado exitosamente', 'success');
+                
+                // Limpiar formulario después de 2 segundos
+                setTimeout(() => {
+                    document.getElementById('createUserForm').reset();
+                    Estado.rolSeleccionado = 'user';
+                    Estado.contrasenaValida = false;
+                    Estado.contrasenasCoinciden = false;
+                    
+                    // Resetear UI
+                    document.querySelectorAll('.role-badge').forEach(badge => {
+                        badge.classList.remove('active');
+                    });
+                    document.querySelector('.role-badge.user').classList.add('active');
+                    
+                    document.getElementById('passwordStrength').className = 'password-strength strength-0';
+                    document.getElementById('strengthText').textContent = 'Débil';
+                    document.getElementById('passwordMatch').classList.add('hidden');
+                    document.getElementById('passwordError').classList.add('hidden');
+                    
+                    resetPasswordRequirements();
+                    
+                    // Restaurar botón
+                    document.getElementById('createUserBtn').innerHTML = originalHTML;
+                    document.getElementById('createUserBtn').disabled = false;
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error creando usuario:', error);
+                
+                let mensajeError = 'Error al crear usuario';
+                if (error.data && error.data.data) {
+                    // Error de validación de PocketBase
+                    const errores = Object.values(error.data.data).flat();
+                    mensajeError = errores[0] || mensajeError;
+                } else if (error.message) {
+                    mensajeError = error.message;
+                }
+                
+                mostrarNotificacion(mensajeError, 'error');
+                
+                // Restaurar botón
+                document.getElementById('createUserBtn').innerHTML = originalHTML;
+                document.getElementById('createUserBtn').disabled = false;
+            }
+        }
+        
+        // Volver al sistema
+        function volverAlSistema() {
+            window.location.href = 'index.html';
+        }
+        
+        // Sistema de notificaciones
+        function mostrarNotificacion(mensaje, tipo = 'info') {
+            // Remover notificaciones anteriores
+            document.querySelectorAll('.notification').forEach(el => el.remove());
+            
+            // Crear nueva notificación
+            const notification = document.createElement('div');
+            notification.className = `notification ${tipo}`;
+            notification.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i data-lucide="${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'alert-circle' : 'info'}" 
+                       class="w-5 h-5"></i>
+                    <span>${mensaje}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            lucide.createIcons();
+            
+            // Remover después de 5 segundos
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.style.opacity = '0';
+                    notification.style.transition = 'opacity 0.3s';
+                    setTimeout(() => notification.remove(), 300);
+                }
+            }, 5000);
+        }
+        
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', () => {
+            // Configurar eventos
+            document.getElementById('createUserForm').addEventListener('submit', handleCreateUser);
+            
+            // Seleccionar rol por defecto
+            seleccionarRol('user');
+            
+            // Verificar si hay sesión activa
+            const token = localStorage.getItem('sisov_token');
+            if (!token) {
+                mostrarNotificacion('Debe iniciar sesión primero', 'error');
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 2000);
+            }
+            
+            // Auto-focus en nombre
+            document.getElementById('nombre').focus();
+        });
+        
+        // Verificar fortaleza al cargar si hay texto
+        document.getElementById('password').addEventListener('input', verificarFortalezaContrasena);
+        document.getElementById('confirmPassword').addEventListener('input', verificarCoincidenciaContrasena);
+    </script>
+</body>
+</html>
