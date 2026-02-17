@@ -28,6 +28,9 @@ const CONFIG = {
     }
 };
 
+// Exponer CONFIG globalmente para otros módulos
+window.CONFIG = CONFIG;
+
 // ======================================================
 // SISTEMA PRINCIPAL
 // ======================================================
@@ -48,6 +51,9 @@ const Sistema = {
         transacciones: new Map(), // Para operaciones atómicas
         listeners: new Map() // Para eventos
     },
+
+    // Controladores de abort para fetch
+    _abortControllers: new Map(),
 
     // Getters/Setters con validación
     get estado() {
@@ -98,6 +104,55 @@ const Sistema = {
             throw error;
         }
     },
+
+    // ======================================================
+    // FETCH CON TIMEOUT MEDIANTE ABORTCONTROLLER
+    // ======================================================
+
+    async fetchConTimeout(url, options = {}, timeout = CONFIG.TIMEOUTS.RED) {
+        const controller = new AbortController();
+        const id = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        this._abortControllers.set(id, controller);
+        
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            this._abortControllers.delete(id);
+        }, timeout);
+        
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            this._abortControllers.delete(id);
+            
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            this._abortControllers.delete(id);
+            
+            if (error.name === 'AbortError') {
+                throw new Error(`Timeout de ${timeout}ms excedido para ${url}`);
+            }
+            throw error;
+        }
+    },
+
+    // Cancelar todas las peticiones pendientes (útil al cerrar sesión)
+    cancelarPeticionesPendientes() {
+        this._abortControllers.forEach((controller, id) => {
+            controller.abort();
+        });
+        this._abortControllers.clear();
+        console.log("[SISTEMA] Peticiones pendientes canceladas");
+    },
+
+    // ======================================================
+    // RESTAURAR SESIÓN
+    // ======================================================
 
     async restaurarSesion() {
         try {
@@ -183,7 +238,7 @@ const Sistema = {
     },
 
     // ======================================================
-    // OPERACIONES DE STOCK (NUEVAS - ATÓMICAS)
+    // OPERACIONES DE STOCK (ATÓMICAS)
     // ======================================================
 
     async ajustarStock(productoId, cantidad, razon = 'ajuste', metadata = {}) {
@@ -255,7 +310,7 @@ const Sistema = {
                         ajuste.productoId, 
                         ajuste.cantidad, 
                         razon,
-                        ajuste.metadata
+                        ajuste.metadata || {}
                     );
                     resultados.push(resultado);
                 } catch (error) {
@@ -281,7 +336,7 @@ const Sistema = {
             
         } catch (error) {
             // Revertir cambios si es necesario
-            await this.revertirAjustes(resultados, razon);
+            await this.revertirAjustes(resultados || [], razon);
             tx.fallar(error);
             throw error;
         }
@@ -292,11 +347,17 @@ const Sistema = {
         
         for (const ajuste of ajustesRealizados.reverse()) {
             try {
-                await this.ajustarStock(
-                    ajuste.id,
-                    -ajuste.cambio,
-                    `reversion_${razon}`
-                );
+                // Extraer el ID del producto del resultado
+                const productoId = ajuste.id || ajuste.productoId;
+                const cambio = ajuste.cambio || 0;
+                
+                if (productoId && cambio !== 0) {
+                    await this.ajustarStock(
+                        productoId,
+                        -cambio,
+                        `reversion_${razon}`
+                    ).catch(e => console.error("[STOCK] Error en reversión:", e));
+                }
             } catch (error) {
                 console.error("[STOCK] Error en reversión:", error);
             }
@@ -336,7 +397,7 @@ const Sistema = {
     },
 
     // ======================================================
-    // LOGGING Y ERRORES
+    // LOGGING Y ERRORES (MEJORADO)
     // ======================================================
 
     async registrarLog(tipo, datos) {
@@ -355,7 +416,10 @@ const Sistema = {
             
             // Intentar guardar en servidor (no bloquear)
             if (window.pb) {
-                window.pb.collection('system_logs').create(logEntry).catch(e => {
+                window.pb.collection('system_logs').create(logEntry, {
+                    $autoCancel: false,
+                    requestKey: `log_${Date.now()}`
+                }).catch(e => {
                     console.warn("[LOGS] No se pudo guardar en servidor:", e);
                 });
             }
@@ -390,7 +454,7 @@ const Sistema = {
         this.registrarLog('ERROR', {
             error_id: errorId,
             contexto,
-            mensaje: error.message,
+            mensaje: error.message || 'Error desconocido',
             stack: error.stack,
             estado: {
                 usuario: this._estado.usuario?.email,
@@ -403,12 +467,12 @@ const Sistema = {
         this.emitirEvento(CONFIG.EVENTOS.ERROR, {
             errorId,
             contexto,
-            mensaje: error.message
+            mensaje: error.message || 'Error desconocido'
         });
         
         // Mostrar al usuario si es necesario
         if (mostrarAlUsuario) {
-            this.mostrarToast(error.message, 'error');
+            this.mostrarToast(error.message || 'Error inesperado', 'error');
         }
         
         return errorId;
@@ -419,13 +483,18 @@ const Sistema = {
     // ======================================================
 
     iniciarHeartbeat() {
-        setInterval(async () => {
+        this._heartbeatInterval = setInterval(async () => {
             if (this._estado.usuario) {
                 try {
                     // Verificar sesión activa
                     const user = await window.pb.collection('users').getOne(this._estado.usuario.id, {
                         requestKey: `heartbeat_${Date.now()}`,
                         $autoCancel: false
+                    }).catch(e => {
+                        if (e.status === 401 || e.status === 403) {
+                            throw e;
+                        }
+                        return null;
                     });
                     
                     if (!user) {
@@ -449,6 +518,14 @@ const Sistema = {
     },
 
     cerrarSesionForzada() {
+        // Cancelar peticiones pendientes
+        this.cancelarPeticionesPendientes();
+        
+        // Limpiar intervalo de heartbeat
+        if (this._heartbeatInterval) {
+            clearInterval(this._heartbeatInterval);
+        }
+        
         this.limpiarSesionLocal();
         this.mostrarVistaLogin();
         this.mostrarToast('Sesión expirada', 'warning');
@@ -461,24 +538,41 @@ const Sistema = {
     },
 
     // ======================================================
-    // MÉTODOS DE UI
+    // MÉTODOS DE UI (MEJORADOS - SIN XSS)
     // ======================================================
 
     mostrarToast(mensaje, tipo = 'info') {
+        // Sanitizar mensaje para evitar XSS
+        const mensajeSanitizado = this.sanitizarTexto(mensaje);
+        
         const toast = document.createElement('div');
         toast.className = `toast toast-${tipo}`;
-        toast.innerHTML = `
-            <div class="flex items-center gap-2">
-                ${this.getIconoToast(tipo)}
-                <span>${mensaje}</span>
-            </div>
-        `;
+        
+        // Usar textContent en lugar de innerHTML para la parte del mensaje
+        const icono = this.getIconoToast(tipo);
+        
+        toast.innerHTML = `<div class="flex items-center gap-2">${icono}</div>`;
+        
+        const spanMensaje = document.createElement('span');
+        spanMensaje.textContent = mensajeSanitizado;
+        toast.querySelector('.flex.items-center').appendChild(spanMensaje);
+        
         document.body.appendChild(toast);
         
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 300);
         }, 3000);
+    },
+
+    sanitizarTexto(texto) {
+        if (!texto) return '';
+        return String(texto)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     },
 
     getIconoToast(tipo) {
@@ -507,7 +601,7 @@ const Sistema = {
     },
 
     // ======================================================
-    // MÉTODOS EXISTENTES (ADAPTADOS)
+    // MÉTODOS DE AUTENTICACIÓN
     // ======================================================
 
     async iniciarSesion(email, password) {
@@ -587,6 +681,14 @@ const Sistema = {
         
         if (result.isConfirmed) {
             try {
+                // Cancelar peticiones pendientes
+                this.cancelarPeticionesPendientes();
+                
+                // Limpiar intervalo de heartbeat
+                if (this._heartbeatInterval) {
+                    clearInterval(this._heartbeatInterval);
+                }
+                
                 if (this._estado.usuario) {
                     await window.pb.collection('users').update(this._estado.usuario.id, {
                         session_id: "",
@@ -609,11 +711,18 @@ const Sistema = {
         }
     },
 
+    // ======================================================
+    // TASA BCV (CON ABORTCONTROLLER)
+    // ======================================================
+
     async cargarTasaBCV() {
         try {
-            const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
-                timeout: 5000
-            });
+            const response = await this.fetchConTimeout(
+                'https://api.exchangerate-api.com/v4/latest/USD',
+                {},
+                CONFIG.TIMEOUTS.RED
+            );
+            
             const data = await response.json();
             
             if (data.rates?.VES) {
@@ -621,19 +730,26 @@ const Sistema = {
             } else {
                 throw new Error("No se pudo obtener tasa");
             }
-        } catch {
-            console.warn("[SISTEMA] Usando tasa por defecto");
+        } catch (error) {
+            console.warn("[SISTEMA] Error cargando tasa, usando valor por defecto:", error.message);
             this._estado.tasaBCV = 36.50;
         }
         
         this.actualizarTasaUI();
     },
 
+    // ======================================================
+    // HORA DEL SERVIDOR (CON ABORTCONTROLLER)
+    // ======================================================
+
     async actualizarHoraServidor() {
         try {
-            const response = await fetch('https://web-production-81e05.up.railway.app/hora-venezuela', {
-                timeout: 5000
-            });
+            const response = await this.fetchConTimeout(
+                'https://web-production-81e05.up.railway.app/hora-venezuela',
+                {},
+                CONFIG.TIMEOUTS.RED
+            );
+            
             const data = await response.json();
             
             if (data.ok && data.iso) {
@@ -644,7 +760,7 @@ const Sistema = {
                 throw new Error("Respuesta inválida");
             }
         } catch (error) {
-            console.warn("[SISTEMA] Usando hora local:", error);
+            console.warn("[SISTEMA] Usando hora local:", error.message);
             this._estado.config.serverTime = new Date();
             this._estado.config.ultimaSincronizacion = Date.now();
         }
@@ -688,6 +804,10 @@ const Sistema = {
             rateEl.textContent = this._estado.tasaBCV.toFixed(2);
         }
     },
+
+    // ======================================================
+    // NAVEGACIÓN ENTRE TABS
+    // ======================================================
 
     cambiarTab(tabId) {
         // Desactivar todos los tabs
@@ -779,9 +899,45 @@ const Sistema = {
     activarVentasManual(elemento) {
         this.cambiarTab('ventas');
         elemento.classList.remove('tab-atencion');
+    },
+
+    // ======================================================
+    // MODALES DE TASA
+    // ======================================================
+
+    mostrarModalTasa() {
+        const modal = document.getElementById('modalTasa');
+        if (modal) {
+            document.getElementById('referenciaRate').textContent = this._estado.tasaBCV.toFixed(2);
+            modal.classList.add('active');
+        }
+    },
+
+    cerrarModalTasa() {
+        document.getElementById('modalTasa')?.classList.remove('active');
+    },
+
+    async obtenerTasaReferencia() {
+        await this.cargarTasaBCV();
+        this.mostrarToast('Tasa actualizada', 'success');
+    },
+
+    guardarTasaManual() {
+        const input = document.getElementById('tasaManualInput');
+        const tasa = parseFloat(input?.value);
+        
+        if (tasa && tasa > 0) {
+            this._estado.tasaBCV = tasa;
+            this._estado.config.tasaManual = true;
+            this.actualizarTasaUI();
+            this.cerrarModalTasa();
+            this.mostrarToast('Tasa guardada', 'success');
+            if (input) input.value = '';
+        } else {
+            this.mostrarToast('Ingrese una tasa válida', 'error');
+        }
     }
 };
 
 // Exponer globalmente
 window.Sistema = Sistema;
-window.CONFIG = CONFIG;
