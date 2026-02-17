@@ -1,6 +1,6 @@
 /**
  * @file ventas.js
- * @description Módulo de ventas refactorizado usando el sistema transaccional
+ * @description Módulo de ventas con reserva de stock y manejo de concurrencia
  */
 
 const Ventas = {
@@ -15,10 +15,14 @@ const Ventas = {
         window.Sistema.estado.carrito = nuevoCarrito;
         this.guardarCarritoPersistente();
         this.actualizarCarritoUI();
-        window.Sistema.emitirEvento(CONFIG.EVENTOS.CARRITO_CAMBIADO, {
-            items: nuevoCarrito.length,
-            total: this.calcularTotalUSD()
-        });
+        
+        // Usar window.CONFIG en lugar de CONFIG directamente
+        if (window.CONFIG) {
+            window.Sistema.emitirEvento(window.CONFIG.EVENTOS.CARRITO_CAMBIADO, {
+                items: nuevoCarrito.length,
+                total: this.calcularTotalUSD()
+            });
+        }
     },
     
     // ======================================================
@@ -27,14 +31,15 @@ const Ventas = {
     
     cargarCarritoPersistente() {
         try {
-            const carritoGuardado = localStorage.getItem(CONFIG.STORAGE_KEYS.CARRITO);
+            const storageKey = window.CONFIG?.STORAGE_KEYS?.CARRITO || 'sisov_carrito';
+            const carritoGuardado = localStorage.getItem(storageKey);
             if (!carritoGuardado) return;
             
             const carritoData = JSON.parse(carritoGuardado);
             
             // Validar que los productos existen
             if (!window.Sistema.estado.productos.length) {
-                console.warn("[VENTAS] Productos no cargados, diferiendo restauración");
+                console.warn("[VENTAS] Productos no cargados, difiriendo restauración");
                 setTimeout(() => this.cargarCarritoPersistente(), 1000);
                 return;
             }
@@ -43,6 +48,7 @@ const Ventas = {
             const carritoReconstruido = carritoData
                 .map(item => {
                     const producto = window.Sistema.estado.productos.find(p => p.id === item.productoId);
+                    // Verificar stock actual contra la cantidad que se quiere restaurar
                     if (producto && producto.stock >= item.cantidad) {
                         return {
                             producto: producto,
@@ -62,25 +68,27 @@ const Ventas = {
             
         } catch (error) {
             window.Sistema.manejarError('cargar_carrito', error, false);
-            localStorage.removeItem(CONFIG.STORAGE_KEYS.CARRITO);
+            const storageKey = window.CONFIG?.STORAGE_KEYS?.CARRITO || 'sisov_carrito';
+            localStorage.removeItem(storageKey);
         }
     },
     
     guardarCarritoPersistente() {
         try {
+            const storageKey = window.CONFIG?.STORAGE_KEYS?.CARRITO || 'sisov_carrito';
             const carritoData = this.carrito.map(item => ({
                 productoId: item.producto.id,
                 cantidad: item.cantidad,
                 timestamp: Date.now()
             }));
-            localStorage.setItem(CONFIG.STORAGE_KEYS.CARRITO, JSON.stringify(carritoData));
+            localStorage.setItem(storageKey, JSON.stringify(carritoData));
         } catch (error) {
             window.Sistema.manejarError('guardar_carrito', error, false);
         }
     },
     
     // ======================================================
-    // OPERACIONES DEL CARRITO
+    // OPERACIONES DEL CARRITO CON RESERVA DE STOCK
     // ======================================================
     
     async agregarAlCarrito(productoId) {
@@ -90,6 +98,7 @@ const Ventas = {
             return;
         }
         
+        // Verificar stock actual (rápido, pero no definitivo)
         if (producto.stock <= 0) {
             window.Sistema.mostrarToast('Producto sin stock', 'error');
             return;
@@ -98,80 +107,176 @@ const Ventas = {
         // Buscar si ya está en el carrito
         const itemIndex = this.carrito.findIndex(item => item.producto.id === productoId);
         
-        if (itemIndex >= 0) {
-            const item = this.carrito[itemIndex];
-            
-            if (item.cantidad < producto.stock) {
-                // Actualizar cantidad
-                this.carrito = this.carrito.map((item, idx) => 
-                    idx === itemIndex 
-                        ? { ...item, cantidad: item.cantidad + 1 }
-                        : item
-                );
+        try {
+            if (itemIndex >= 0) {
+                const item = this.carrito[itemIndex];
+                
+                // Verificar si hay stock suficiente para incrementar
+                if (item.cantidad < producto.stock) {
+                    // Intentar reservar el stock adicional
+                    await window.Sistema.ajustarStock(
+                        productoId,
+                        -1, // Restar 1 del stock
+                        'reserva_carrito_incremento',
+                        { operacion: 'incrementar_carrito', usuario: window.Sistema.estado.usuario?.email }
+                    );
+                    
+                    // Si la reserva fue exitosa, actualizar carrito
+                    this.carrito = this.carrito.map((item, idx) => 
+                        idx === itemIndex 
+                            ? { ...item, cantidad: item.cantidad + 1 }
+                            : item
+                    );
+                    
+                    window.Sistema.mostrarToast('Producto agregado (+1)', 'success');
+                } else {
+                    window.Sistema.mostrarToast(`Solo hay ${producto.stock} disponibles`, 'warning');
+                    return;
+                }
             } else {
-                window.Sistema.mostrarToast(`Solo hay ${producto.stock} disponibles`, 'warning');
-                return;
+                // Nuevo producto: reservar 1 unidad
+                await window.Sistema.ajustarStock(
+                    productoId,
+                    -1, // Restar 1 del stock
+                    'reserva_carrito_nuevo',
+                    { operacion: 'agregar_carrito', usuario: window.Sistema.estado.usuario?.email }
+                );
+                
+                // Si la reserva fue exitosa, agregar al carrito
+                this.carrito = [...this.carrito, {
+                    producto: producto,
+                    cantidad: 1
+                }];
+                
+                window.Sistema.mostrarToast('Producto agregado', 'success');
             }
-        } else {
-            // Agregar nuevo item
-            this.carrito = [...this.carrito, {
-                producto: producto,
-                cantidad: 1
-            }];
+        } catch (error) {
+            // Si falla la reserva de stock, mostrar error
+            if (error.message.includes('Stock insuficiente')) {
+                window.Sistema.mostrarToast('No hay stock disponible en este momento', 'error');
+            } else {
+                window.Sistema.manejarError('agregar_al_carrito', error);
+            }
         }
-        
-        window.Sistema.mostrarToast('Producto agregado', 'success');
     },
     
-    removerDelCarrito(index) {
+    async removerDelCarrito(index) {
         const item = this.carrito[index];
         if (!item) return;
         
-        this.carrito = this.carrito.filter((_, i) => i !== index);
-        window.Sistema.mostrarToast('Producto removido', 'info');
+        try {
+            // Devolver el stock reservado
+            await window.Sistema.ajustarStock(
+                item.producto.id,
+                item.cantidad, // Devolver todas las unidades
+                'devolucion_carrito',
+                { operacion: 'remover_carrito', cantidad: item.cantidad }
+            );
+            
+            // Eliminar del carrito
+            this.carrito = this.carrito.filter((_, i) => i !== index);
+            window.Sistema.mostrarToast('Producto removido, stock devuelto', 'info');
+            
+        } catch (error) {
+            window.Sistema.manejarError('remover_carrito', error);
+            // Aún así remover del carrito local para no dejar estado inconsistente
+            this.carrito = this.carrito.filter((_, i) => i !== index);
+            window.Sistema.mostrarToast('Producto removido (error devolviendo stock)', 'warning');
+        }
     },
     
-    actualizarCantidad(index, nuevaCantidad) {
+    async actualizarCantidad(index, nuevaCantidad) {
         const item = this.carrito[index];
         if (!item) return;
         
         if (nuevaCantidad < 1) {
-            this.removerDelCarrito(index);
+            await this.removerDelCarrito(index);
             return;
         }
         
-        if (nuevaCantidad > item.producto.stock) {
-            window.Sistema.mostrarToast(`Solo hay ${item.producto.stock} disponibles`, 'warning');
-            return;
-        }
+        const diferencia = nuevaCantidad - item.cantidad;
         
-        this.carrito = this.carrito.map((item, idx) => 
-            idx === index 
-                ? { ...item, cantidad: nuevaCantidad }
-                : item
-        );
+        try {
+            if (diferencia > 0) {
+                // Incrementar: verificar stock y reservar
+                const producto = item.producto;
+                
+                // Verificar stock actual
+                if (nuevaCantidad > producto.stock + item.cantidad) {
+                    window.Sistema.mostrarToast(`Solo hay ${producto.stock + item.cantidad} disponibles`, 'warning');
+                    return;
+                }
+                
+                // Reservar las unidades adicionales
+                await window.Sistema.ajustarStock(
+                    item.producto.id,
+                    -diferencia,
+                    'reserva_carrito_actualizacion',
+                    { operacion: 'incrementar_cantidad', diferencia }
+                );
+                
+            } else if (diferencia < 0) {
+                // Decrementar: devolver stock
+                await window.Sistema.ajustarStock(
+                    item.producto.id,
+                    -diferencia, // positivo porque diferencia es negativo
+                    'devolucion_carrito_actualizacion',
+                    { operacion: 'decrementar_cantidad', devolucion: -diferencia }
+                );
+            }
+            
+            // Actualizar carrito
+            this.carrito = this.carrito.map((item, idx) => 
+                idx === index 
+                    ? { ...item, cantidad: nuevaCantidad }
+                    : item
+            );
+            
+        } catch (error) {
+            window.Sistema.manejarError('actualizar_cantidad', error);
+        }
     },
     
-    vaciarCarrito() {
+    async vaciarCarrito() {
         if (this.carrito.length === 0) return;
         
-        Swal.fire({
+        const confirmacion = await Swal.fire({
             title: '¿Vaciar carrito?',
-            text: 'Esta acción no se puede deshacer',
+            text: 'Se devolverá todo el stock al inventario',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Sí, vaciar',
             cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                this.carrito = [];
-                window.Sistema.mostrarToast('Carrito vaciado', 'info');
-            }
         });
+        
+        if (!confirmacion.isConfirmed) return;
+        
+        try {
+            // Devolver todo el stock de una vez (operación múltiple)
+            const ajustes = this.carrito.map(item => ({
+                productoId: item.producto.id,
+                cantidad: item.cantidad,
+                critical: false,
+                metadata: {
+                    operacion: 'vaciar_carrito',
+                    cantidad: item.cantidad
+                }
+            }));
+            
+            await window.Sistema.ajusteStockMultiple(ajustes, 'vaciar_carrito');
+            
+            // Vaciar carrito
+            this.carrito = [];
+            window.Sistema.mostrarToast('Carrito vaciado, stock devuelto', 'info');
+            
+        } catch (error) {
+            window.Sistema.manejarError('vaciar_carrito', error);
+            window.Sistema.mostrarToast('Error al devolver stock', 'error');
+        }
     },
     
     // ======================================================
-    // PROCESAMIENTO DE VENTA
+    // PROCESAMIENTO DE VENTA (CON VALIDACIÓN FINAL)
     // ======================================================
     
     async procesarVenta() {
@@ -189,17 +294,6 @@ const Ventas = {
         if (window.GestionLicencias?.licenciaActual?.estado !== 'activa') {
             window.Sistema.mostrarToast('Licencia suspendida', 'error');
             return;
-        }
-        
-        // Verificar stock disponible
-        for (const item of this.carrito) {
-            if (item.cantidad > item.producto.stock) {
-                window.Sistema.mostrarToast(
-                    `Stock insuficiente de ${item.producto.name_p}. Disponible: ${item.producto.stock}`, 
-                    'error'
-                );
-                return;
-            }
         }
         
         // Confirmar venta
@@ -231,25 +325,18 @@ const Ventas = {
         const tx = window.Sistema.iniciarTransaccion('venta', 30000);
         
         try {
-            // 1. Preparar ajustes de stock
-            const ajustes = this.carrito.map(item => ({
-                productoId: item.producto.id,
-                cantidad: -item.cantidad,
-                critical: true,
-                metadata: {
-                    venta: true,
-                    producto: item.producto.name_p
+            // Verificar stock final antes de procesar
+            for (const item of this.carrito) {
+                const productoActual = window.Sistema.estado.productos.find(p => p.id === item.producto.id);
+                if (!productoActual || item.cantidad > productoActual.stock) {
+                    throw new Error(`Stock insuficiente para ${item.producto.name_p}. Stock actual: ${productoActual?.stock || 0}`);
                 }
-            }));
-            
-            // 2. Aplicar ajustes de stock
-            const resultadoStock = await window.Sistema.ajusteStockMultiple(ajustes, 'venta');
-            
-            if (resultadoStock.errores.length > 0) {
-                throw new Error(`Error actualizando stock: ${resultadoStock.errores[0].error}`);
             }
             
-            // 3. Crear registro de venta
+            // 1. Los ajustes de stock YA están aplicados (por las reservas)
+            // Pero necesitamos confirmar la venta (no ajustar de nuevo)
+            
+            // 2. Crear registro de venta
             const fechaInmutable = window.Sistema.estado.config.serverTime?.toISOString().split('T')[0] || 
                                    new Date().toISOString().split('T')[0];
             
@@ -280,7 +367,7 @@ const Ventas = {
                 $autoCancel: false
             });
             
-            // 4. Registrar en logs
+            // 3. Registrar en logs
             await window.Sistema.registrarLog('VENTA_COMPLETADA', {
                 factura: ventaData.n_factura,
                 total_usd: ventaData.total_usd,
@@ -289,19 +376,23 @@ const Ventas = {
                 venta_id: ventaRegistrada.id
             });
             
-            // 5. Limpiar carrito
+            // 4. Limpiar carrito (NO devolver stock porque ya se descontó al reservar)
             const itemsVendidos = [...this.carrito];
             this.carrito = [];
-            localStorage.removeItem(CONFIG.STORAGE_KEYS.CARRITO);
             
-            // 6. Emitir evento
-            window.Sistema.emitirEvento(CONFIG.EVENTOS.VENTA_COMPLETADA, {
-                factura: ventaData.n_factura,
-                total: ventaData.total_usd,
-                items: itemsVendidos
-            });
+            const storageKey = window.CONFIG?.STORAGE_KEYS?.CARRITO || 'sisov_carrito';
+            localStorage.removeItem(storageKey);
             
-            // 7. Mostrar éxito
+            // 5. Emitir evento
+            if (window.CONFIG) {
+                window.Sistema.emitirEvento(window.CONFIG.EVENTOS.VENTA_COMPLETADA, {
+                    factura: ventaData.n_factura,
+                    total: ventaData.total_usd,
+                    items: itemsVendidos
+                });
+            }
+            
+            // 6. Mostrar éxito
             tx.completar();
             
             await Swal.fire({
@@ -323,18 +414,21 @@ const Ventas = {
                 }
             });
             
-            // 8. Actualizar UI
+            // 7. Actualizar UI
             this.renderizarProductos();
             
         } catch (error) {
             tx.fallar(error);
             
-            // Intentar revertir stock si fue necesario
             await window.Sistema.registrarLog('VENTA_FALLIDA', {
                 error: error.message,
                 transaction_id: tx.id,
                 carrito: this.carrito.map(i => ({ id: i.producto.id, cantidad: i.cantidad }))
             });
+            
+            // Si hay error, NO revertir stock porque ya se reservó correctamente
+            // El error probablemente es en la creación de la venta, no en el stock
+            window.Sistema.mostrarToast('Error al registrar la venta. El stock ya fue reservado.', 'error');
             
             throw error;
         }
@@ -613,7 +707,6 @@ const Ventas = {
         if (window.lucide) lucide.createIcons();
     },
     
-    // Scanner (mantener igual)
     iniciarScanner() {
         document.getElementById('modalScanner')?.classList.add('active');
         setTimeout(() => {
@@ -629,13 +722,18 @@ const Ventas = {
 // Exponer globalmente
 window.Ventas = Ventas;
 
-// Escuchar eventos del sistema
-if (window.Sistema) {
-    window.Sistema.on(CONFIG.EVENTOS.STOCK_ACTUALIZADO, () => {
-        // Actualizar UI si estamos en la pestaña de ventas
+// Escuchar eventos del sistema (con protección)
+if (window.Sistema && window.CONFIG) {
+    // Guardar referencia para poder remover después
+    const stockUpdatedHandler = () => {
         if (document.getElementById('tabVentas')?.classList.contains('active')) {
             Ventas.renderizarProductos();
             Ventas.actualizarCarritoUI();
         }
-    });
+    };
+    
+    window.Sistema.on(window.CONFIG.EVENTOS.STOCK_ACTUALIZADO, stockUpdatedHandler);
+    
+    // Guardar handler para posible limpieza
+    window._ventasStockHandler = stockUpdatedHandler;
 }

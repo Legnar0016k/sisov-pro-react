@@ -654,33 +654,6 @@ const Reportes = {
         }
     },
     
-    procesarTopProductos(ventas) {
-        const conteo = {};
-        ventas.forEach(v => {
-            if (v.items) {
-                // Parsear items si es string
-                const items = typeof v.items === 'string' ? JSON.parse(v.items) : v.items;
-                items.forEach(item => {
-                    conteo[item.producto] = (conteo[item.producto] || 0) + item.cantidad;
-                });
-            }
-        });
-
-        const top = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 5);
-        const container = document.getElementById('topProducts');
-        if (!container) return;
-
-        container.innerHTML = top.length > 0 ? top.map(([nombre, cant], i) => `
-            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <div class="flex items-center gap-3">
-                    <span class="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white text-[10px] font-bold rounded-md">${i+1}</span>
-                    <span class="text-sm font-medium text-slate-700">${nombre}</span>
-                </div>
-                <span class="text-xs font-bold bg-white px-2 py-1 rounded shadow-sm text-indigo-600">${cant} uds.</span>
-            </div>
-        `).join('') : '<p class="text-center text-slate-400 py-4 text-xs">No hay productos vendidos</p>';
-    },
-    
     setText(id, text) {
         const el = document.getElementById(id);
         if (el) el.textContent = text;
