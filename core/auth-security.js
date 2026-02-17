@@ -371,7 +371,7 @@ const GestionLicencias = {
 };
 
 // ======================================================
-// SEGURIDAD PRINCIPAL (CORREGIDA - SIN LOOP INFINITO)
+// SEGURIDAD PRINCIPAL (VERSIÓN FINAL CORREGIDA)
 // ======================================================
 
 const AuthSecurity = {
@@ -386,7 +386,7 @@ const AuthSecurity = {
     _ultimaActividad: Date.now(),
     _reconectando: false,
     _sesionPresaLimpia: false,
-    _validandoSesion: false, // ← NUEVO: Bandera para evitar loops
+    _validandoSesion: false, // Bandera para evitar loops
     
     async inicializar() {
         console.log("[SEGURIDAD] Inicializando...");
@@ -677,7 +677,7 @@ const AuthSecurity = {
     },
     
     // ======================================================
-    // FINGERPRINT Y VALIDACIÓN DE SESIÓN (CORREGIDA)
+    // FINGERPRINT MEJORADO (CON CANVAS PARA MAYOR SEGURIDAD)
     // ======================================================
     
     generarFingerprint() {
@@ -689,7 +689,12 @@ const AuthSecurity = {
             new Date().getTimezoneOffset(),
             navigator.hardwareConcurrency || 'unknown',
             navigator.platform || 'unknown',
-            screen.colorDepth || 'unknown'
+            screen.colorDepth || 'unknown',
+            // Elementos adicionales para mayor unicidad
+            navigator.deviceMemory || 'unknown',
+            navigator.maxTouchPoints || 'unknown',
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+            this.getCanvasFingerprint()
         ];
         
         const hash = componentes.join('|');
@@ -702,8 +707,33 @@ const AuthSecurity = {
         return Math.abs(hashNumerico).toString(36).substring(0, 32);
     },
     
+    // Canvas fingerprinting para mayor seguridad
+    getCanvasFingerprint() {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 200;
+            canvas.height = 50;
+            ctx.textBaseline = 'top';
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#f60';
+            ctx.fillRect(0, 0, 100, 50);
+            ctx.fillStyle = '#069';
+            ctx.fillText('SISOV', 2, 15);
+            ctx.fillStyle = '#fff';
+            ctx.fillText('PRO', 80, 30);
+            return canvas.toDataURL().slice(0, 50);
+        } catch (e) {
+            return 'canvas-error';
+        }
+    },
+    
+    // ======================================================
+    // VALIDACIÓN DE SESIÓN (CORREGIDA - SIN LOOP Y CON API CORRECTA)
+    // ======================================================
+    
     async validarSesionUnica() {
-        // ← PREVENIR LOOP INFINITO
+        // Prevenir loop infinito
         if (this._validandoSesion) {
             console.log("[SEGURIDAD] Ya validando sesión, ignorando...");
             return true;
@@ -720,7 +750,8 @@ const AuthSecurity = {
         const fingerprint = this.generarFingerprint();
         
         try {
-            const serverUser = await window.pb.collection('users').getOne(user.id, {
+            // CORREGIDO: Usar getFirstListItem en lugar de getOne para colecciones auth
+            const serverUser = await window.pb.collection('users').getFirstListItem(`id = "${user.id}"`, {
                 requestKey: `validar_${Date.now()}`,
                 $autoCancel: false
             });
