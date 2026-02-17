@@ -235,92 +235,71 @@ const Reportes = {
         if (window.lucide) lucide.createIcons();
     },
     
-    async cargarGraficoSemanal(fechaRef) {
+     async cargarGraficoSemanal(fechaRef) {
         try {
             const ctx = document.getElementById('salesChart');
             if (!ctx) return;
-            
+
             if (this.chartInstancia) {
                 this.chartInstancia.destroy();
             }
-            
-            const user = window.pb?.authStore?.model;
+
+            const user = window.pb.authStore.model;
             if (!user) return;
-            
+
             const fechaFin = new Date(fechaRef);
-            fechaFin.setHours(23, 59, 59, 999);
-            
             const fechaInicio = new Date(fechaRef);
             fechaInicio.setDate(fechaInicio.getDate() - 6);
-            fechaInicio.setHours(0, 0, 0, 0);
-            
+
             const ventas = await window.pb.collection('sales').getFullList({
-                filter: `user_id = "${user.id}" && created >= "${fechaInicio.toISOString()}" && created <= "${fechaFin.toISOString()}"`,
+                filter: `user_id = "${user.id}" && created >= "${fechaInicio.toISOString().split('T')[0]} 00:00:00" && created <= "${fechaFin.toISOString().split('T')[0]} 23:59:59"`,
                 sort: 'created',
-                requestKey: `grafico_${Date.now()}`,
+                requestKey: 'grafico_' + Date.now(),
                 $autoCancel: false
             });
-            
-            // Inicializar días
-            const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-            const datosPorDia = {};
-            dias.forEach(d => datosPorDia[d] = 0);
-            
-            // Acumular ventas por día
+
+            const datosMap = {};
+            for(let i=0; i<7; i++) {
+                const d = new Date(fechaInicio);
+                d.setDate(d.getDate() + i);
+                datosMap[d.toLocaleDateString('es-ES', {weekday: 'short'})] = 0;
+            }
+
             ventas.forEach(v => {
-                const fecha = new Date(v.created);
-                const dia = dias[fecha.getDay()];
-                datosPorDia[dia] += v.total_usd || 0;
+                const label = new Date(v.created).toLocaleDateString('es-ES', {weekday: 'short'});
+                if(datosMap.hasOwnProperty(label)) datosMap[label] += v.total_usd;
             });
-            
-            // Crear gráfico
+
             this.chartInstancia = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: Object.keys(datosPorDia),
+                    labels: Object.keys(datosMap),
                     datasets: [{
                         label: 'Ventas USD',
-                        data: Object.values(datosPorDia),
+                        data: Object.values(datosMap),
                         borderColor: '#4f46e5',
                         backgroundColor: 'rgba(79, 70, 229, 0.1)',
                         borderWidth: 3,
                         tension: 0.4,
                         fill: true,
                         pointRadius: 4,
-                        pointBackgroundColor: '#4f46e5',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2
+                        pointBackgroundColor: '#4f46e5'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { 
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: (context) => `$${context.raw.toFixed(2)}`
-                            }
-                        }
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
                         y: { 
                             beginAtZero: true, 
-                            grid: { color: 'rgba(0,0,0,0.05)' },
-                            ticks: { 
-                                callback: (val) => '$' + val.toFixed(2),
-                                stepSize: 50
-                            }
-                        },
-                        x: {
-                            grid: { display: false }
+                            ticks: { callback: (val) => '$' + val }
                         }
                     }
                 }
             });
-            
         } catch (error) {
-            console.error('[REPORTES] Error gráfico:', error);
+            console.error('Error en cargarGraficoSemanal:', error);
         }
     },
     
