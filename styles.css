@@ -330,3 +330,27 @@ nav {
     background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
     border: 2px solid #fee2e2;
 }
+
+/* Animaciones para el splash screen */
+@keyframes pulse-slow {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.9; }
+}
+
+.animate-pulse-slow {
+    animation: pulse-slow 2s ease-in-out infinite;
+}
+
+.delay-300 {
+    animation-delay: 300ms;
+}
+
+/* Transiciones suaves */
+#splashScreen {
+    transition: opacity 0.5s ease-in-out;
+}
+
+#splashScreen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
