@@ -369,5 +369,10 @@ const Sistema = {
 // Exponer globalmente
 window.Sistema = Sistema;
 window.SISOV_BOOT_COMPLETE = window.SISOV_BOOT_COMPLETE || false;
+// Después de cargar productos
+if (window.Ventas) {
+    window.Ventas.cargarCarritoPersistente();
+    window.Ventas.actualizarCarritoUI();
+}
 
 

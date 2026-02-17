@@ -11,6 +11,57 @@ const Ventas = {
     TIEMPO_DEBOUNCE: 500, // milisegundos para agrupar cambios
     ACTUALIZACION_EN_CURSO: false,
 
+    // ===== NUEVO: Persistencia del carrito =====
+    
+    // Cargar carrito desde localStorage al iniciar
+    cargarCarritoPersistente() {
+        try {
+            const carritoGuardado = localStorage.getItem('sisov_carrito');
+            if (carritoGuardado) {
+                const carritoData = JSON.parse(carritoGuardado);
+                
+                // Verificar que los productos aún existen en el estado
+                if (window.Sistema && window.Sistema.estado.productos.length > 0) {
+                    // Reconstruir el carrito con los productos actuales
+                    this.carrito = carritoData
+                        .map(item => {
+                            const producto = window.Sistema.estado.productos.find(p => p.id === item.productoId);
+                            if (producto) {
+                                return {
+                                    producto: producto,
+                                    cantidad: item.cantidad
+                                };
+                            }
+                            return null;
+                        })
+                        .filter(item => item !== null);
+                    
+                    console.log(`[VENTAS] Carrito restaurado: ${this.carrito.length} productos`);
+                }
+            }
+        } catch (error) {
+            console.error('[VENTAS] Error cargando carrito persistente:', error);
+        }
+    },
+
+    // Guardar carrito en localStorage
+    guardarCarritoPersistente() {
+        try {
+            const carritoData = this.carrito.map(item => ({
+                productoId: item.producto.id,
+                cantidad: item.cantidad
+            }));
+            localStorage.setItem('sisov_carrito', JSON.stringify(carritoData));
+        } catch (error) {
+            console.error('[VENTAS] Error guardando carrito persistente:', error);
+        }
+    },
+
+    // Limpiar carrito persistente (al finalizar venta)
+    limpiarCarritoPersistente() {
+        localStorage.removeItem('sisov_carrito');
+    },
+
     async cargarProductosVenta() {
         return window.Sistema.estado.productos;
     },
@@ -201,6 +252,7 @@ const Ventas = {
         }
         
         this.actualizarCarritoUI();
+        this.guardarCarritoPersistente(); // ← Guardar en localStorage
         window.Sistema.mostrarToast('Producto agregado al carrito', 'success');
     },
     
@@ -215,6 +267,7 @@ const Ventas = {
         this.carrito.splice(index, 1);
         
         this.actualizarCarritoUI();
+        this.guardarCarritoPersistente(); // ← Guardar en localStorage
         window.Sistema.mostrarToast('Producto removido', 'info');
     },
     
@@ -247,6 +300,7 @@ const Ventas = {
         }
         
         this.actualizarCarritoUI();
+        this.guardarCarritoPersistente(); // ← Guardar en localStorage
     },
     
     actualizarCarritoUI() {
@@ -358,6 +412,7 @@ const Ventas = {
                 
                 this.carrito = [];
                 this.actualizarCarritoUI();
+                this.limpiarCarritoPersistente(); // ← Limpiar localStorage
                 window.Sistema.mostrarToast('Carrito vaciado, stock devuelto', 'info');
             }
         });
@@ -473,6 +528,7 @@ const Ventas = {
             // Limpiar carrito
             this.carrito = [];
             this.actualizarCarritoUI();
+            this.limpiarCarritoPersistente(); // ← Limpiar localStorage
             
             // Actualizar UI de productos
             this.renderizarProductos();
@@ -519,3 +575,15 @@ const Ventas = {
 
 // Exponer globalmente
 window.Ventas = Ventas;
+
+// Auto-ejecutar al cargar el script
+(function() {
+    // Esperar a que Sistema esté listo
+    const checkSistema = setInterval(() => {
+        if (window.Sistema && window.Sistema.estado.productos.length > 0) {
+            clearInterval(checkSistema);
+            Ventas.cargarCarritoPersistente();
+            Ventas.actualizarCarritoUI();
+        }
+    }, 100);
+})();
