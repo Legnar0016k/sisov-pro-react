@@ -535,22 +535,29 @@ const Inventario = {
     },
 
     // NUEVA: Renderiza cualquier lista de productos (filtrada o completa)
+    
     renderizarInventarioConFiltro(productos) {
         const container = document.getElementById('inventoryTable');
         if (!container) return;
-    
+
         container.innerHTML = '';
-    
+
         if (productos.length === 0) {
             container.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No hay productos para mostrar</td></tr>`;
             return;
         }
-    
+
         productos.forEach(producto => {
             const row = this.crearFilaProducto(producto);
             container.appendChild(row);
         });
-    
+
+        // REFRESCAR ICONOS DE LUCIDE
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+        // También mantener el refrescarIconos por compatibilidad
         if (typeof window.refrescarIconos === 'function') {
             window.refrescarIconos();
         }

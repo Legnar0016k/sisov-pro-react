@@ -576,14 +576,4 @@ const Ventas = {
 // Exponer globalmente
 window.Ventas = Ventas;
 
-// Auto-ejecutar al cargar el script
-(function() {
-    // Esperar a que Sistema esté listo
-    const checkSistema = setInterval(() => {
-        if (window.Sistema && window.Sistema.estado.productos.length > 0) {
-            clearInterval(checkSistema);
-            Ventas.cargarCarritoPersistente();
-            Ventas.actualizarCarritoUI();
-        }
-    }, 100);
-})();
+
