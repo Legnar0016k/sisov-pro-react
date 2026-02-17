@@ -78,7 +78,7 @@ const GestionLicencias = {
     
     async cargarLicenciaUsuario(forzar = false) {
         if (this._cargandoLicencia && !forzar) {
-            console.log("[LICENCIAS] Cargada...");
+            console.log("[LICENCIAS] Cargando licencia...");
             return this.licenciaActual;
         }
         
