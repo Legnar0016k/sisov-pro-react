@@ -647,17 +647,17 @@ const Sistema = {
             if (window.Inventario) {
                 await window.Inventario.cargarProductos();
             }
-            
+
             // Cargar carrito persistente
             if (window.Ventas) {
                 window.Ventas.cargarCarritoPersistente();
             }
-            
-            // Cargar licencia
-            if (window.GestionLicencias) {
-                await window.GestionLicencias.cargarLicenciaUsuario();
+
+            // Cargar licencia usando AuthSecurity (NO GestionLicencias)
+            if (window.AuthSecurity) {
+                await window.AuthSecurity.cargarLicenciaUsuario();
             }
-            
+
         } catch (error) {
             this.manejarError('carga_datos_iniciales', error, false);
         }
@@ -840,8 +840,9 @@ const Sistema = {
                 if (window.Reportes) window.Reportes.cargarReportes();
                 break;
             case 'configuracion':
-                if (window.GestionLicencias) {
-                    window.GestionLicencias.actualizarContadorVendedores();
+                // Usar AuthSecurity en lugar de GestionLicencias
+                if (window.AuthSecurity) {
+                    window.AuthSecurity.actualizarContadorVendedores();
                 }
                 if (window.Configuracion) {
                     window.Configuracion.cargarUsuarios();

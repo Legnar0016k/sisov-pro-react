@@ -1,7 +1,7 @@
 /**
  * @file auth-security.js
  * @description Seguridad mejorada y GESTIÓN DE LICENCIAS unificada.
- * @fix Corregido bucle infinito en validación de sesión
+ * @fix Corregido manejo de expiración y renovación de licencias
  */
 
 // ======================================================
@@ -41,7 +41,7 @@ const AuthSecurity = {
     _reconectando: false,
     _sesionPresaLimpia: false,
     _validandoSesion: false,
-    _procesandoOnChange: false, // [FIX] Nueva bandera para evitar bucles
+    _procesandoOnChange: false,
     _limpiarActividad: null,
 
     get licenciaActual() {
@@ -63,14 +63,11 @@ const AuthSecurity = {
         this.iniciarMonitoreoInactividad();
         
         if (window.pb?.authStore?.isValid) {
-            // [FIX] No llamar a validarSesionUnica aquí, solo cargar datos
             await this.cargarLicenciaUsuario();
             await this.limpiarSesionesPresas();
         }
         
-        // [FIX] Configurar onChange con protección contra bucles
         window.pb?.authStore?.onChange(async (token) => {
-            // Prevenir ejecución si ya estamos procesando un cambio
             if (this._procesandoOnChange) {
                 console.log("[SEGURIDAD] Ignorando onChange recursivo");
                 return;
@@ -83,10 +80,8 @@ const AuthSecurity = {
                     this._ultimaActividad = Date.now();
                     console.log("[SEGURIDAD] Token detectado, actualizando estado");
                     
-                    // [FIX] No validar sesión aquí, solo cargar datos básicos
                     await this.cargarLicenciaUsuario(true);
                     
-                    // Iniciar heartbeat solo si hay sesión válida
                     if (window.pb?.authStore?.isValid) {
                         this.iniciarHeartbeat();
                     }
@@ -98,7 +93,6 @@ const AuthSecurity = {
                     this.detenerVerificacionPeriodicaLicencia();
                 }
             } finally {
-                // Liberar la bandera después de un delay para evitar múltiples ejecuciones
                 setTimeout(() => {
                     this._procesandoOnChange = false;
                 }, 1000);
@@ -111,7 +105,7 @@ const AuthSecurity = {
     },
 
     // ======================================================
-    // DETECCIÓN DE ACTIVIDAD DEL USUARIO
+    // DETECCIÓN DE ACTIVIDAD
     // ======================================================
     
     configurarDeteccionActividad() {
@@ -173,7 +167,7 @@ const AuthSecurity = {
     },
 
     // ======================================================
-    // GESTIÓN DE LICENCIAS
+    // GESTIÓN DE LICENCIAS (VERSIÓN CORREGIDA)
     // ======================================================
 
     iniciarVerificacionPeriodicaLicencia() {
@@ -193,7 +187,6 @@ const AuthSecurity = {
     },
 
     async cargarLicenciaUsuario(forzar = false) {
-        // [FIX] Prevenir llamadas recursivas
         if (this._cargandoLicencia) {
             console.log("[LICENCIAS] Ya cargando, ignorando...");
             return this._licenciaActual;
@@ -217,24 +210,29 @@ const AuthSecurity = {
 
             console.log("[LICENCIAS] Buscando licencia para:", user.id);
 
-            // [FIX] Usar $autoCancel: true para evitar múltiples peticiones
+            // Buscar licencia activa del usuario (solo por user_id, sin importar active)
             const licencias = await window.pb.collection('licencias').getFullList({
-                filter: `user_id = "${user.id}" && active = true`,
+                filter: `user_id = "${user.id}"`,
+                sort: '-created',
                 requestKey: `licencia_${Date.now()}`,
-                $autoCancel: true, // Cambiado a true para cancelar peticiones duplicadas
-                $cancelKey: `licencia_user_${user.id}` // Clave para agrupar cancelaciones
+                $autoCancel: true,
+                $cancelKey: `licencia_user_${user.id}`
             }).catch(error => {
                 if (error.status === 0 || error.name === 'AbortError') {
-                    console.warn("[LICENCIAS] Error de red o petición cancelada, usando cache");
+                    console.warn("[LICENCIAS] Error de red, usando cache");
                     return this._licenciaActual ? [this._licenciaActual] : [];
                 }
                 throw error;
             });
 
             if (licencias && licencias.length > 0) {
+                // Tomar la licencia más reciente
                 this._licenciaActual = licencias[0];
                 console.log("[LICENCIAS] Licencia encontrada:", this._licenciaActual.key);
+                
+                // Verificar expiración
                 await this.verificarEstadoLicencia();
+                
                 this._ultimaVerificacionLicencia = Date.now();
                 return this._licenciaActual;
             } else {
@@ -255,55 +253,146 @@ const AuthSecurity = {
         }
     },
 
-    async verificarEstadoLicencia() {
-        if (!this._licenciaActual) return false;
+ async verificarEstadoLicencia() {
+    if (!this._licenciaActual) return false;
 
+    try {
+        // Obtener datos actualizados del servidor
+        const licenciaServer = await window.pb.collection('licencias').getOne(
+            this._licenciaActual.id,
+            { 
+                requestKey: `verificar_${Date.now()}`, 
+                $autoCancel: true,
+                $cancelKey: `verificar_licencia_${this._licenciaActual.id}`
+            }
+        ).catch(error => {
+            if (error.status === 0 || error.name === 'AbortError') {
+                console.warn("[LICENCIAS] Error de red en verificación");
+                return this._licenciaActual;
+            }
+            throw error;
+        });
+
+        this._licenciaActual = licenciaServer;
+
+        // Verificar expiración
+        const hoy = new Date();
+        const fechaExpiracion = licenciaServer.expired ? new Date(licenciaServer.expired) : null;
+        let estadoActual = licenciaServer.estado || 'activa';
+        
+        // 🔥 CORRECCIÓN: Si la licencia está activa pero ya expiró, actualizar estado
+        // PERO SOLO SI ESTÁ ACTIVA - no tocar si ya está suspendida
+        if (fechaExpiracion && fechaExpiracion < hoy && estadoActual === 'activa') {
+            console.log("[LICENCIAS] Licencia expirada, actualizando estado");
+            
+            estadoActual = 'suspendida';
+            
+            // Actualizar en el servidor
+            await window.pb.collection('licencias').update(licenciaServer.id, {
+                estado: 'suspendida',
+                active: false
+            }).catch(e => console.warn("[LICENCIAS] Error actualizando licencia:", e));
+            
+            this._licenciaActual.estado = 'suspendida';
+            this._licenciaActual.active = false;
+        } 
+        // 🔥 IMPORTANTE: Si la licencia está suspendida, NO la reactivamos automáticamente
+        // Solo se reactiva si el usuario la edita manualmente o asigna una nueva
+
+        this.actualizarUILicencia(estadoActual, fechaExpiracion);
+        return estadoActual === 'activa';
+
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error("[LICENCIAS] Error verificando:", error);
+            if (this._licenciaActual) {
+                this.actualizarUILicencia('verificando', null);
+            }
+        }
+        return false;
+    }
+},
+
+    // ======================================================
+    // ACTIVACIÓN/RENOVACIÓN DE LICENCIA (CORREGIDO)
+    // ======================================================
+
+    async activarLicencia(key) {
         try {
-            const licenciaServer = await window.pb.collection('licencias').getOne(
-                this._licenciaActual.id,
-                { 
-                    requestKey: `verificar_${Date.now()}`, 
-                    $autoCancel: true,
-                    $cancelKey: `verificar_licencia_${this._licenciaActual.id}`
-                }
-            ).catch(error => {
-                if (error.status === 0 || error.name === 'AbortError') {
-                    console.warn("[LICENCIAS] Error de red o petición cancelada en verificación");
-                    return this._licenciaActual;
-                }
-                throw error;
+            const user = window.pb?.authStore?.model;
+            if (!user) throw new Error("Usuario no autenticado");
+
+            console.log("[LICENCIAS] Activando licencia:", key);
+
+            // Buscar la licencia por su key
+            const licencias = await window.pb.collection('licencias').getFullList({
+                filter: `key = "${key}"`,
+                requestKey: `buscar_licencia_${Date.now()}`,
+                $autoCancel: true
             });
 
-            this._licenciaActual = licenciaServer;
-
-            const hoy = new Date();
-            const fechaExpiracion = licenciaServer.expired ? new Date(licenciaServer.expired) : null;
-            let expirada = false;
-
-            if (fechaExpiracion && fechaExpiracion < hoy) {
-                expirada = true;
-                if (licenciaServer.estado === 'activa') {
-                    await window.pb.collection('licencias').update(licenciaServer.id, {
-                        estado: 'suspendida', active: false
-                    }).catch(e => console.warn("[LICENCIAS] Error actualizando licencia:", e));
-                    this._licenciaActual.estado = 'suspendida';
-                }
+            if (licencias.length === 0) {
+                window.Sistema?.mostrarToast('Clave de licencia no válida', 'error');
+                return false;
             }
 
-            const estado = expirada ? 'suspendida' : (this._licenciaActual.estado || 'activa');
-            this.actualizarUILicencia(estado, fechaExpiracion);
-            return estado === 'activa';
+            const nuevaLicencia = licencias[0];
+
+            // Verificar si ya tiene un usuario asignado
+            if (nuevaLicencia.user_id) {
+                window.Sistema?.mostrarToast('Esta licencia ya está siendo utilizada por otro usuario', 'error');
+                return false;
+            }
+
+            // Verificar fecha de expiración
+            const fechaExp = nuevaLicencia.expired ? new Date(nuevaLicencia.expired) : null;
+            if (fechaExp && fechaExp < new Date()) {
+                window.Sistema?.mostrarToast('Esta licencia ya ha expirado', 'error');
+                return false;
+            }
+
+            // INICIO DE TRANSACCIÓN: Desactivar licencia anterior si existe
+            if (this._licenciaActual) {
+                console.log("[LICENCIAS] Desactivando licencia anterior:", this._licenciaActual.key);
+                
+                // Desactivar la licencia anterior
+                await window.pb.collection('licencias').update(this._licenciaActual.id, {
+                    user_id: null,           // Liberar el usuario
+                    estado: 'disponible',      // Cambiar estado a disponible
+                    active: false
+                }).catch(e => console.warn("[LICENCIAS] Error desactivando licencia anterior:", e));
+            }
+
+            // Actualizar la nueva licencia con el usuario actual
+            await window.pb.collection('licencias').update(nuevaLicencia.id, {
+                user_id: user.id,
+                estado: 'activa',
+                active: true,
+                fecha_activacion: new Date().toISOString()
+            });
+
+            // Actualizar el usuario con el ID de la nueva licencia
+            await window.pb.collection('users').update(user.id, { 
+                licence_id: nuevaLicencia.id 
+            });
+
+            window.Sistema?.mostrarToast('Licencia activada correctamente', 'success');
+            
+            // Recargar la licencia actual
+            await this.cargarLicenciaUsuario(true);
+            
+            return true;
 
         } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error("[LICENCIAS] Error verificando:", error);
-                if (this._licenciaActual) {
-                    this.actualizarUILicencia('verificando', null);
-                }
-            }
+            console.error('[LICENCIAS] Error activando licencia:', error);
+            window.Sistema?.mostrarToast('Error al activar la licencia', 'error');
             return false;
         }
     },
+
+    // ======================================================
+    // UI DE LICENCIAS
+    // ======================================================
 
     actualizarUILicencia(estado, fechaExpiracion) {
         const badge = document.getElementById('statusLicenciaGlobal');
@@ -328,6 +417,11 @@ const AuthSecurity = {
                 this.habilitarModuloVentas(false);
                 this.mostrarMensajeSuspension();
                 break;
+            case 'disponible':
+                badge.className += ' bg-amber-50 text-amber-700 border-amber-100';
+                badge.innerHTML = `<i data-lucide="key" class="w-4 h-4"></i> Licencia Disponible`;
+                this.habilitarModuloVentas(false);
+                break;
             case 'sin_licencia':
                 badge.className += ' bg-slate-100 text-slate-600 border-slate-200';
                 badge.innerHTML = `<i data-lucide="key" class="w-4 h-4"></i> Sin Licencia`;
@@ -341,9 +435,16 @@ const AuthSecurity = {
         }
 
         if (detalleTexto) {
-            detalleTexto.textContent = this._licenciaActual 
-                ? `Plan ${this._licenciaActual.plan || 'Profesional'} ${fechaExpiracion ? `- Vence: ${fechaExpiracion.toLocaleDateString('es-VE')}` : ''}`
-                : 'Sin licencia asignada';
+            if (this._licenciaActual) {
+                const plan = this._licenciaActual.plan || 'Profesional';
+                if (fechaExpiracion) {
+                    detalleTexto.textContent = `Plan ${plan} - Vence: ${fechaExpiracion.toLocaleDateString('es-VE')}`;
+                } else {
+                    detalleTexto.textContent = `Plan ${plan}`;
+                }
+            } else {
+                detalleTexto.textContent = 'Sin licencia asignada';
+            }
         }
 
         if (licenciaKeyDisplay) {
@@ -445,48 +546,6 @@ const AuthSecurity = {
         }
     },
 
-    async activarLicencia(key) {
-        try {
-            const user = window.pb?.authStore?.model;
-            if (!user) throw new Error("Usuario no autenticado");
-
-            const licencias = await window.pb.collection('licencias').getFullList({
-                filter: `key = "${key}"`,
-                requestKey: `buscar_licencia_${Date.now()}`,
-                $autoCancel: true
-            });
-
-            if (licencias.length === 0) {
-                window.Sistema?.mostrarToast('Clave no válida', 'error');
-                return;
-            }
-
-            const licencia = licencias[0];
-
-            if (licencia.is_usada) {
-                window.Sistema?.mostrarToast('Licencia ya utilizada', 'error');
-                return;
-            }
-
-            await window.pb.collection('licencias').update(licencia.id, {
-                user_id: user.id,
-                is_usada: true,
-                active: true,
-                estado: 'activa',
-                fecha_activacion: new Date().toISOString()
-            });
-
-            await window.pb.collection('users').update(user.id, { licence_id: licencia.id });
-
-            window.Sistema?.mostrarToast('Licencia activada', 'success');
-            await this.cargarLicenciaUsuario(true);
-
-        } catch (error) {
-            console.error('Error activando licencia:', error);
-            window.Sistema?.mostrarToast('Error al activar', 'error');
-        }
-    },
-
     copiarLicenciaAlPortapapeles() {
         const key = this._licenciaActual?.key;
         if (key) {
@@ -576,7 +635,7 @@ const AuthSecurity = {
     esperar(ms) { return new Promise(resolve => setTimeout(resolve, ms)); },
 
     // ======================================================
-    // HEARTBEAT MEJORADO
+    // HEARTBEAT
     // ======================================================
     
     iniciarHeartbeat() {
@@ -655,7 +714,7 @@ const AuthSecurity = {
     },
 
     // ======================================================
-    // VALIDACIÓN DE SESIÓN (Ahora solo se llama explícitamente)
+    // VALIDACIÓN DE SESIÓN
     // ======================================================
     
     async validarSesionUnica() {
@@ -717,7 +776,7 @@ const AuthSecurity = {
         } catch (error) {
             console.error("[SEGURIDAD] Error:", error);
             this._validandoSesion = false;
-            return true; // Permitir continuar en caso de error
+            return true;
         }
     },
 
@@ -728,7 +787,7 @@ const AuthSecurity = {
     }
 };
 
-// Inicializar solo cuando el DOM esté listo
+// Inicializar
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => AuthSecurity.inicializar());
 } else {
