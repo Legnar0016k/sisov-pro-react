@@ -1,6 +1,7 @@
 /**
  * @file ventas.js
- * @description Módulo de ventas con reserva de stock y manejo de concurrencia
+ * @description Módulo de ventas con reserva de stock y manejo de concurrencia.
+ * [REFACTOR] Depende de AuthSecurity para verificar licencia.
  */
 
 const Ventas = {
@@ -16,7 +17,6 @@ const Ventas = {
         this.guardarCarritoPersistente();
         this.actualizarCarritoUI();
         
-        // Usar window.CONFIG en lugar de CONFIG directamente
         if (window.CONFIG) {
             window.Sistema.emitirEvento(window.CONFIG.EVENTOS.CARRITO_CAMBIADO, {
                 items: nuevoCarrito.length,
@@ -37,23 +37,17 @@ const Ventas = {
             
             const carritoData = JSON.parse(carritoGuardado);
             
-            // Validar que los productos existen
             if (!window.Sistema.estado.productos.length) {
                 console.warn("[VENTAS] Productos no cargados, difiriendo restauración");
                 setTimeout(() => this.cargarCarritoPersistente(), 1000);
                 return;
             }
             
-            // Reconstruir carrito
             const carritoReconstruido = carritoData
                 .map(item => {
                     const producto = window.Sistema.estado.productos.find(p => p.id === item.productoId);
-                    // Verificar stock actual contra la cantidad que se quiere restaurar
                     if (producto && producto.stock >= item.cantidad) {
-                        return {
-                            producto: producto,
-                            cantidad: item.cantidad
-                        };
+                        return { producto: producto, cantidad: item.cantidad };
                     }
                     return null;
                 })
@@ -88,70 +82,32 @@ const Ventas = {
     },
     
     // ======================================================
-    // OPERACIONES DEL CARRITO CON RESERVA DE STOCK
+    // OPERACIONES DEL CARRITO
     // ======================================================
     
     async agregarAlCarrito(productoId) {
         const producto = window.Sistema.estado.productos.find(p => p.id === productoId);
-        if (!producto) {
-            window.Sistema.mostrarToast('Producto no encontrado', 'error');
-            return;
-        }
-        
-        // Verificar stock actual (rápido, pero no definitivo)
-        if (producto.stock <= 0) {
-            window.Sistema.mostrarToast('Producto sin stock', 'error');
-            return;
-        }
-        
-        // Buscar si ya está en el carrito
+        if (!producto) { window.Sistema.mostrarToast('Producto no encontrado', 'error'); return; }
+        if (producto.stock <= 0) { window.Sistema.mostrarToast('Producto sin stock', 'error'); return; }
+
         const itemIndex = this.carrito.findIndex(item => item.producto.id === productoId);
         
         try {
             if (itemIndex >= 0) {
                 const item = this.carrito[itemIndex];
-                
-                // Verificar si hay stock suficiente para incrementar
                 if (item.cantidad < producto.stock) {
-                    // Intentar reservar el stock adicional
-                    await window.Sistema.ajustarStock(
-                        productoId,
-                        -1, // Restar 1 del stock
-                        'reserva_carrito_incremento',
-                        { operacion: 'incrementar_carrito', usuario: window.Sistema.estado.usuario?.email }
-                    );
-                    
-                    // Si la reserva fue exitosa, actualizar carrito
-                    this.carrito = this.carrito.map((item, idx) => 
-                        idx === itemIndex 
-                            ? { ...item, cantidad: item.cantidad + 1 }
-                            : item
-                    );
-                    
+                    await window.Sistema.ajustarStock(productoId, -1, 'reserva_carrito_incremento', { operacion: 'incrementar_carrito' });
+                    this.carrito = this.carrito.map((item, idx) => idx === itemIndex ? { ...item, cantidad: item.cantidad + 1 } : item);
                     window.Sistema.mostrarToast('Producto agregado (+1)', 'success');
                 } else {
                     window.Sistema.mostrarToast(`Solo hay ${producto.stock} disponibles`, 'warning');
-                    return;
                 }
             } else {
-                // Nuevo producto: reservar 1 unidad
-                await window.Sistema.ajustarStock(
-                    productoId,
-                    -1, // Restar 1 del stock
-                    'reserva_carrito_nuevo',
-                    { operacion: 'agregar_carrito', usuario: window.Sistema.estado.usuario?.email }
-                );
-                
-                // Si la reserva fue exitosa, agregar al carrito
-                this.carrito = [...this.carrito, {
-                    producto: producto,
-                    cantidad: 1
-                }];
-                
+                await window.Sistema.ajustarStock(productoId, -1, 'reserva_carrito_nuevo', { operacion: 'agregar_carrito' });
+                this.carrito = [...this.carrito, { producto: producto, cantidad: 1 }];
                 window.Sistema.mostrarToast('Producto agregado', 'success');
             }
         } catch (error) {
-            // Si falla la reserva de stock, mostrar error
             if (error.message.includes('Stock insuficiente')) {
                 window.Sistema.mostrarToast('No hay stock disponible en este momento', 'error');
             } else {
@@ -163,23 +119,12 @@ const Ventas = {
     async removerDelCarrito(index) {
         const item = this.carrito[index];
         if (!item) return;
-        
         try {
-            // Devolver el stock reservado
-            await window.Sistema.ajustarStock(
-                item.producto.id,
-                item.cantidad, // Devolver todas las unidades
-                'devolucion_carrito',
-                { operacion: 'remover_carrito', cantidad: item.cantidad }
-            );
-            
-            // Eliminar del carrito
+            await window.Sistema.ajustarStock(item.producto.id, item.cantidad, 'devolucion_carrito', { operacion: 'remover_carrito', cantidad: item.cantidad });
             this.carrito = this.carrito.filter((_, i) => i !== index);
             window.Sistema.mostrarToast('Producto removido, stock devuelto', 'info');
-            
         } catch (error) {
             window.Sistema.manejarError('remover_carrito', error);
-            // Aún así remover del carrito local para no dejar estado inconsistente
             this.carrito = this.carrito.filter((_, i) => i !== index);
             window.Sistema.mostrarToast('Producto removido (error devolviendo stock)', 'warning');
         }
@@ -188,50 +133,22 @@ const Ventas = {
     async actualizarCantidad(index, nuevaCantidad) {
         const item = this.carrito[index];
         if (!item) return;
-        
-        if (nuevaCantidad < 1) {
-            await this.removerDelCarrito(index);
-            return;
-        }
-        
+        if (nuevaCantidad < 1) { await this.removerDelCarrito(index); return; }
+
         const diferencia = nuevaCantidad - item.cantidad;
         
         try {
             if (diferencia > 0) {
-                // Incrementar: verificar stock y reservar
                 const producto = item.producto;
-                
-                // Verificar stock actual
                 if (nuevaCantidad > producto.stock + item.cantidad) {
                     window.Sistema.mostrarToast(`Solo hay ${producto.stock + item.cantidad} disponibles`, 'warning');
                     return;
                 }
-                
-                // Reservar las unidades adicionales
-                await window.Sistema.ajustarStock(
-                    item.producto.id,
-                    -diferencia,
-                    'reserva_carrito_actualizacion',
-                    { operacion: 'incrementar_cantidad', diferencia }
-                );
-                
+                await window.Sistema.ajustarStock(item.producto.id, -diferencia, 'reserva_carrito_actualizacion', { operacion: 'incrementar_cantidad', diferencia });
             } else if (diferencia < 0) {
-                // Decrementar: devolver stock
-                await window.Sistema.ajustarStock(
-                    item.producto.id,
-                    -diferencia, // positivo porque diferencia es negativo
-                    'devolucion_carrito_actualizacion',
-                    { operacion: 'decrementar_cantidad', devolucion: -diferencia }
-                );
+                await window.Sistema.ajustarStock(item.producto.id, -diferencia, 'devolucion_carrito_actualizacion', { operacion: 'decrementar_cantidad', devolucion: -diferencia });
             }
-            
-            // Actualizar carrito
-            this.carrito = this.carrito.map((item, idx) => 
-                idx === index 
-                    ? { ...item, cantidad: nuevaCantidad }
-                    : item
-            );
-            
+            this.carrito = this.carrito.map((item, idx) => idx === index ? { ...item, cantidad: nuevaCantidad } : item);
         } catch (error) {
             window.Sistema.manejarError('actualizar_cantidad', error);
         }
@@ -239,36 +156,13 @@ const Ventas = {
     
     async vaciarCarrito() {
         if (this.carrito.length === 0) return;
-        
-        const confirmacion = await Swal.fire({
-            title: '¿Vaciar carrito?',
-            text: 'Se devolverá todo el stock al inventario',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Sí, vaciar',
-            cancelButtonText: 'Cancelar'
-        });
-        
+        const confirmacion = await Swal.fire({ title: '¿Vaciar carrito?', text: 'Se devolverá todo el stock al inventario', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, vaciar', cancelButtonText: 'Cancelar' });
         if (!confirmacion.isConfirmed) return;
-        
         try {
-            // Devolver todo el stock de una vez (operación múltiple)
-            const ajustes = this.carrito.map(item => ({
-                productoId: item.producto.id,
-                cantidad: item.cantidad,
-                critical: false,
-                metadata: {
-                    operacion: 'vaciar_carrito',
-                    cantidad: item.cantidad
-                }
-            }));
-            
+            const ajustes = this.carrito.map(item => ({ productoId: item.producto.id, cantidad: item.cantidad, critical: false, metadata: { operacion: 'vaciar_carrito', cantidad: item.cantidad } }));
             await window.Sistema.ajusteStockMultiple(ajustes, 'vaciar_carrito');
-            
-            // Vaciar carrito
             this.carrito = [];
             window.Sistema.mostrarToast('Carrito vaciado, stock devuelto', 'info');
-            
         } catch (error) {
             window.Sistema.manejarError('vaciar_carrito', error);
             window.Sistema.mostrarToast('Error al devolver stock', 'error');
@@ -276,42 +170,23 @@ const Ventas = {
     },
     
     // ======================================================
-    // PROCESAMIENTO DE VENTA (CON VALIDACIÓN FINAL)
+    // PROCESAMIENTO DE VENTA
     // ======================================================
     
     async procesarVenta() {
-        if (this._procesandoVenta) {
-            window.Sistema.mostrarToast('Ya hay una venta en proceso', 'warning');
+        if (this._procesandoVenta) { window.Sistema.mostrarToast('Ya hay una venta en proceso', 'warning'); return; }
+        if (this.carrito.length === 0) { window.Sistema.mostrarToast('El carrito está vacío', 'error'); return; }
+
+        // [REFACTOR] Verificar licencia activa desde AuthSecurity
+        if (!window.AuthSecurity?.licenciaEsActiva) {
+            window.Sistema.mostrarToast('Licencia no activa', 'error');
             return;
         }
-        
-        if (this.carrito.length === 0) {
-            window.Sistema.mostrarToast('El carrito está vacío', 'error');
-            return;
-        }
-        
-        // Verificar licencia
-        if (window.GestionLicencias?.licenciaActual?.estado !== 'activa') {
-            window.Sistema.mostrarToast('Licencia suspendida', 'error');
-            return;
-        }
-        
-        // Confirmar venta
-        const confirmacion = await Swal.fire({
-            title: 'Confirmar Venta',
-            html: this.generarResumenVenta(),
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Procesar Venta',
-            cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#4f46e5',
-            width: 500
-        });
-        
+
+        const confirmacion = await Swal.fire({ title: 'Confirmar Venta', html: this.generarResumenVenta(), icon: 'question', showCancelButton: true, confirmButtonText: 'Procesar Venta', cancelButtonText: 'Cancelar', confirmButtonColor: '#4f46e5', width: 500 });
         if (!confirmacion.isConfirmed) return;
-        
+
         this._procesandoVenta = true;
-        
         try {
             await this.ejecutarVenta();
         } catch (error) {
@@ -325,7 +200,6 @@ const Ventas = {
         const tx = window.Sistema.iniciarTransaccion('venta', 30000);
         
         try {
-            // Verificar stock final antes de procesar
             for (const item of this.carrito) {
                 const productoActual = window.Sistema.estado.productos.find(p => p.id === item.producto.id);
                 if (!productoActual || item.cantidad > productoActual.stock) {
@@ -333,12 +207,7 @@ const Ventas = {
                 }
             }
             
-            // 1. Los ajustes de stock YA están aplicados (por las reservas)
-            // Pero necesitamos confirmar la venta (no ajustar de nuevo)
-            
-            // 2. Crear registro de venta
-            const fechaInmutable = window.Sistema.estado.config.serverTime?.toISOString().split('T')[0] || 
-                                   new Date().toISOString().split('T')[0];
+            const fechaInmutable = window.Sistema.estado.config.serverTime?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0];
             
             const ventaData = {
                 user_id: window.Sistema.estado.usuario.id,
@@ -362,49 +231,25 @@ const Ventas = {
                 transaction_id: tx.id
             };
             
-            const ventaRegistrada = await window.pb.collection('sales').create(ventaData, {
-                requestKey: `venta_${Date.now()}`,
-                $autoCancel: false
-            });
+            const ventaRegistrada = await window.pb.collection('sales').create(ventaData, { requestKey: `venta_${Date.now()}`, $autoCancel: false });
             
-            // 3. Registrar en logs
-            await window.Sistema.registrarLog('VENTA_COMPLETADA', {
-                factura: ventaData.n_factura,
-                total_usd: ventaData.total_usd,
-                items_count: this.carrito.length,
-                transaction_id: tx.id,
-                venta_id: ventaRegistrada.id
-            });
+            await window.Sistema.registrarLog('VENTA_COMPLETADA', { factura: ventaData.n_factura, total_usd: ventaData.total_usd, items_count: this.carrito.length, transaction_id: tx.id, venta_id: ventaRegistrada.id });
             
-            // 4. Limpiar carrito (NO devolver stock porque ya se descontó al reservar)
             const itemsVendidos = [...this.carrito];
             this.carrito = [];
-            
             const storageKey = window.CONFIG?.STORAGE_KEYS?.CARRITO || 'sisov_carrito';
             localStorage.removeItem(storageKey);
             
-            // 5. Emitir evento
             if (window.CONFIG) {
-                window.Sistema.emitirEvento(window.CONFIG.EVENTOS.VENTA_COMPLETADA, {
-                    factura: ventaData.n_factura,
-                    total: ventaData.total_usd,
-                    items: itemsVendidos
-                });
+                window.Sistema.emitirEvento(window.CONFIG.EVENTOS.VENTA_COMPLETADA, { factura: ventaData.n_factura, total: ventaData.total_usd, items: itemsVendidos });
             }
             
-            // 6. Mostrar éxito
             tx.completar();
             
             await Swal.fire({
                 icon: 'success',
                 title: '¡Venta Exitosa!',
-                html: `
-                    <div class="text-center">
-                        <p class="text-2xl font-bold text-primary mb-2">${ventaData.n_factura}</p>
-                        <p class="text-lg">Total: ${window.Sistema.formatearMoneda(ventaData.total_usd)}</p>
-                        <p class="text-sm text-slate-500 mt-2">La venta se ha registrado correctamente</p>
-                    </div>
-                `,
+                html: `<div class="text-center"><p class="text-2xl font-bold text-primary mb-2">${ventaData.n_factura}</p><p class="text-lg">Total: ${window.Sistema.formatearMoneda(ventaData.total_usd)}</p><p class="text-sm text-slate-500 mt-2">La venta se ha registrado correctamente</p></div>`,
                 confirmButtonText: 'Imprimir Recibo',
                 showCancelButton: true,
                 cancelButtonText: 'Cerrar'
@@ -414,22 +259,12 @@ const Ventas = {
                 }
             });
             
-            // 7. Actualizar UI
             this.renderizarProductos();
             
         } catch (error) {
             tx.fallar(error);
-            
-            await window.Sistema.registrarLog('VENTA_FALLIDA', {
-                error: error.message,
-                transaction_id: tx.id,
-                carrito: this.carrito.map(i => ({ id: i.producto.id, cantidad: i.cantidad }))
-            });
-            
-            // Si hay error, NO revertir stock porque ya se reservó correctamente
-            // El error probablemente es en la creación de la venta, no en el stock
+            await window.Sistema.registrarLog('VENTA_FALLIDA', { error: error.message, transaction_id: tx.id, carrito: this.carrito.map(i => ({ id: i.producto.id, cantidad: i.cantidad })) });
             window.Sistema.mostrarToast('Error al registrar la venta. El stock ya fue reservado.', 'error');
-            
             throw error;
         }
     },
@@ -445,7 +280,6 @@ const Ventas = {
         const day = String(fecha.getDate()).padStart(2, '0');
         const random = Math.floor(Math.random() * 900 + 100);
         const secuencial = String(Date.now()).slice(-6);
-        
         return `FAC-${year}${month}${day}-${secuencial}-${random}`;
     },
     
@@ -456,42 +290,19 @@ const Ventas = {
         let productosHtml = '';
         this.carrito.forEach(item => {
             const subtotal = item.producto.price_usd * item.cantidad;
-            productosHtml += `
-                <tr>
-                    <td class="py-1">${item.producto.name_p}</td>
-                    <td class="py-1 text-center">${item.cantidad}</td>
-                    <td class="py-1 text-right">${window.Sistema.formatearMoneda(item.producto.price_usd)}</td>
-                    <td class="py-1 text-right">${window.Sistema.formatearMoneda(subtotal)}</td>
-                </tr>
-            `;
+            productosHtml += `<tr><td class="py-1">${item.producto.name_p}</td><td class="py-1 text-center">${item.cantidad}</td><td class="py-1 text-right">${window.Sistema.formatearMoneda(item.producto.price_usd)}</td><td class="py-1 text-right">${window.Sistema.formatearMoneda(subtotal)}</td></tr>`;
         });
         
         return `
             <div class="text-left">
                 <table class="w-full text-sm mb-4">
-                    <thead class="border-b border-slate-200">
-                        <tr>
-                            <th class="py-2 text-left">Producto</th>
-                            <th class="py-2 text-center">Cant.</th>
-                            <th class="py-2 text-right">Precio</th>
-                            <th class="py-2 text-right">Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${productosHtml}
-                    </tbody>
+                    <thead class="border-b border-slate-200"><tr><th class="py-2 text-left">Producto</th><th class="py-2 text-center">Cant.</th><th class="py-2 text-right">Precio</th><th class="py-2 text-right">Subtotal</th></tr></thead>
+                    <tbody>${productosHtml}</tbody>
                     <tfoot class="border-t border-slate-200">
-                        <tr>
-                            <td colspan="3" class="py-2 text-right font-bold">Subtotal USD:</td>
-                            <td class="py-2 text-right font-bold">${window.Sistema.formatearMoneda(subtotalUSD)}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3" class="py-2 text-right font-bold">Total Bs:</td>
-                            <td class="py-2 text-right font-bold text-primary">${window.Sistema.formatearMoneda(totalVES, 'VES')}</td>
-                        </tr>
+                        <tr><td colspan="3" class="py-2 text-right font-bold">Subtotal USD:</td><td class="py-2 text-right font-bold">${window.Sistema.formatearMoneda(subtotalUSD)}</td></tr>
+                        <tr><td colspan="3" class="py-2 text-right font-bold">Total Bs:</td><td class="py-2 text-right font-bold text-primary">${window.Sistema.formatearMoneda(totalVES, 'VES')}</td></tr>
                     </tfoot>
                 </table>
-                
                 <div class="bg-slate-50 p-3 rounded-lg text-sm">
                     <p><strong>Método de pago:</strong> ${this._metodoPago}</p>
                     <p><strong>Tasa BCV:</strong> ${window.Sistema.estado.tasaBCV.toFixed(2)} Bs/$</p>
@@ -501,9 +312,7 @@ const Ventas = {
     },
     
     calcularTotalUSD() {
-        return this.carrito.reduce((total, item) => 
-            total + (item.producto.price_usd * item.cantidad), 0
-        );
+        return this.carrito.reduce((total, item) => total + (item.producto.price_usd * item.cantidad), 0);
     },
     
     calcularTotalVES() {
@@ -521,36 +330,20 @@ const Ventas = {
         const productos = window.Sistema.estado.productos;
         
         if (productos.length === 0) {
-            container.innerHTML = `
-                <div class="col-span-full text-center py-12">
-                    <i data-lucide="package-x" class="w-16 h-16 mx-auto text-slate-300 mb-4"></i>
-                    <p class="text-slate-400">No hay productos disponibles</p>
-                    <button onclick="Inventario.mostrarModalProducto()" 
-                            class="btn-primary mt-4 px-6 py-2 rounded-lg text-white">
-                        Agregar Producto
-                    </button>
-                </div>
-            `;
+            container.innerHTML = `<div class="col-span-full text-center py-12"><i data-lucide="package-x" class="w-16 h-16 mx-auto text-slate-300 mb-4"></i><p class="text-slate-400">No hay productos disponibles</p><button onclick="Inventario.mostrarModalProducto()" class="btn-primary mt-4 px-6 py-2 rounded-lg text-white">Agregar Producto</button></div>`;
             if (window.lucide) lucide.createIcons();
             return;
         }
         
         container.innerHTML = '';
-        
-        productos.forEach(producto => {
-            const card = this.crearCardProducto(producto);
-            container.appendChild(card);
-        });
-        
+        productos.forEach(producto => container.appendChild(this.crearCardProducto(producto)));
         if (window.lucide) lucide.createIcons();
     },
     
     crearCardProducto(producto) {
         const div = document.createElement('div');
         div.className = 'bg-white rounded-xl shadow border border-slate-200 p-4 card-hover';
-        
-        const stockClass = producto.stock > 10 ? 'badge-success' : 
-                          producto.stock > 0 ? 'badge-warning' : 'badge-danger';
+        const stockClass = producto.stock > 10 ? 'badge-success' : producto.stock > 0 ? 'badge-warning' : 'badge-danger';
         
         div.innerHTML = `
             <div class="mb-3">
@@ -558,25 +351,15 @@ const Ventas = {
                 <h4 class="font-bold text-slate-800 truncate" title="${producto.name_p}">${producto.name_p}</h4>
                 <p class="text-xs text-slate-500 font-mono">${producto.id_p || producto.id.slice(0,8)}</p>
             </div>
-            
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <span class="text-lg font-bold text-primary">${window.Sistema.formatearMoneda(producto.price_usd)}</span>
                     <p class="text-xs text-slate-500">${window.Sistema.formatearMoneda(producto.price_usd * window.Sistema.estado.tasaBCV, 'VES')}</p>
                 </div>
-                <span class="badge ${stockClass}" title="Stock actual: ${producto.stock} unidades">
-                    ${producto.stock} uds.
-                </span>
+                <span class="badge ${stockClass}" title="Stock actual: ${producto.stock} unidades">${producto.stock} uds.</span>
             </div>
-            
-            <button onclick="Ventas.agregarAlCarrito('${producto.id}')" 
-                    ${producto.stock <= 0 ? 'disabled' : ''}
-                    class="w-full btn-primary py-2 rounded-lg text-white font-semibold ${producto.stock <= 0 ? 'opacity-50 cursor-not-allowed' : ''}">
-                <i data-lucide="shopping-cart" class="w-4 h-4 inline mr-2"></i>
-                ${producto.stock > 0 ? 'Agregar' : 'Sin Stock'}
-            </button>
+            <button onclick="Ventas.agregarAlCarrito('${producto.id}')" ${producto.stock <= 0 ? 'disabled' : ''} class="w-full btn-primary py-2 rounded-lg text-white font-semibold ${producto.stock <= 0 ? 'opacity-50 cursor-not-allowed' : ''}"><i data-lucide="shopping-cart" class="w-4 h-4 inline mr-2"></i>${producto.stock > 0 ? 'Agregar' : 'Sin Stock'}</button>
         `;
-        
         return div;
     },
     
@@ -589,28 +372,20 @@ const Ventas = {
         
         if (!container || !countElement) return;
         
-        // Actualizar contador
         countElement.textContent = this.carrito.length;
         
-        // Calcular totales
         const subtotalUSD = this.calcularTotalUSD();
         const totalVES = this.calcularTotalVES();
         
         subtotalElement.textContent = window.Sistema.formatearMoneda(subtotalUSD);
         totalElement.textContent = window.Sistema.formatearMoneda(totalVES, 'VES');
         
-        // Habilitar/deshabilitar botón
-        const licenciaActiva = window.GestionLicencias?.licenciaActual?.estado === 'activa';
+        // [REFACTOR] Usar AuthSecurity.licenciaEsActiva
+        const licenciaActiva = window.AuthSecurity?.licenciaEsActiva || false;
         procesarBtn.disabled = this.carrito.length === 0 || !licenciaActiva || this._procesandoVenta;
         
-        // Renderizar items
         if (this.carrito.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-8 text-slate-400">
-                    <i data-lucide="shopping-cart" class="w-12 h-12 mx-auto mb-3 opacity-30"></i>
-                    <p class="text-sm font-medium">Carrito vacío</p>
-                </div>
-            `;
+            container.innerHTML = `<div class="text-center py-8 text-slate-400"><i data-lucide="shopping-cart" class="w-12 h-12 mx-auto mb-3 opacity-30"></i><p class="text-sm font-medium">Carrito vacío</p></div>`;
             if (window.lucide) lucide.createIcons();
             return;
         }
@@ -620,37 +395,18 @@ const Ventas = {
         this.carrito.forEach((item, index) => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors';
-            
             itemDiv.innerHTML = `
                 <div class="flex-1 min-w-0">
-                    <h5 class="font-semibold text-slate-800 text-sm truncate" title="${item.producto.name_p}">
-                        ${item.producto.name_p}
-                    </h5>
+                    <h5 class="font-semibold text-slate-800 text-sm truncate" title="${item.producto.name_p}">${item.producto.name_p}</h5>
                     <p class="text-xs text-slate-500">${window.Sistema.formatearMoneda(item.producto.price_usd)} c/u</p>
                 </div>
-                
                 <div class="flex items-center gap-1 ml-2">
-                    <button onclick="Ventas.actualizarCantidad(${index}, ${item.cantidad - 1})" 
-                            class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 transition-colors"
-                            ${item.cantidad <= 1 ? 'disabled' : ''}>
-                        <i data-lucide="minus" class="w-3 h-3"></i>
-                    </button>
-                    
+                    <button onclick="Ventas.actualizarCantidad(${index}, ${item.cantidad - 1})" class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 transition-colors" ${item.cantidad <= 1 ? 'disabled' : ''}><i data-lucide="minus" class="w-3 h-3"></i></button>
                     <span class="w-8 text-center font-bold text-sm">${item.cantidad}</span>
-                    
-                    <button onclick="Ventas.actualizarCantidad(${index}, ${item.cantidad + 1})" 
-                            class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 transition-colors"
-                            ${item.cantidad >= item.producto.stock ? 'disabled' : ''}>
-                        <i data-lucide="plus" class="w-3 h-3"></i>
-                    </button>
-                    
-                    <button onclick="Ventas.removerDelCarrito(${index})" 
-                            class="w-7 h-7 flex items-center justify-center rounded-lg bg-red-100 hover:bg-red-200 text-red-600 ml-1 transition-colors">
-                        <i data-lucide="trash-2" class="w-3 h-3"></i>
-                    </button>
+                    <button onclick="Ventas.actualizarCantidad(${index}, ${item.cantidad + 1})" class="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-200 hover:bg-slate-300 transition-colors" ${item.cantidad >= item.producto.stock ? 'disabled' : ''}><i data-lucide="plus" class="w-3 h-3"></i></button>
+                    <button onclick="Ventas.removerDelCarrito(${index})" class="w-7 h-7 flex items-center justify-center rounded-lg bg-red-100 hover:bg-red-200 text-red-600 ml-1 transition-colors"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
                 </div>
             `;
-            
             container.appendChild(itemDiv);
         });
         
@@ -659,12 +415,10 @@ const Ventas = {
     
     seleccionarMetodoPago(metodo) {
         this._metodoPago = metodo;
-        
         document.querySelectorAll('.payment-method').forEach(btn => {
             btn.classList.remove('border-primary', 'bg-primary', 'text-white');
             btn.classList.add('bg-slate-100', 'text-slate-700');
         });
-        
         const btnSeleccionado = document.querySelector(`.payment-method[data-method="${metodo}"]`);
         if (btnSeleccionado) {
             btnSeleccionado.classList.remove('bg-slate-100', 'text-slate-700');
@@ -673,13 +427,8 @@ const Ventas = {
     },
     
     buscarProductos(termino) {
-        if (!termino || termino.trim() === '') {
-            this.renderizarProductos();
-            return;
-        }
-        
+        if (!termino || termino.trim() === '') { this.renderizarProductos(); return; }
         termino = termino.toLowerCase().trim();
-        
         const productosFiltrados = window.Sistema.estado.productos.filter(producto => {
             return producto.name_p.toLowerCase().includes(termino) ||
                    (producto.id_p && producto.id_p.toLowerCase().includes(termino)) ||
@@ -690,28 +439,17 @@ const Ventas = {
         if (!container) return;
         
         if (productosFiltrados.length === 0) {
-            container.innerHTML = `
-                <div class="col-span-full text-center py-8">
-                    <i data-lucide="search-x" class="w-12 h-12 mx-auto text-slate-300 mb-3"></i>
-                    <p class="text-slate-400">No se encontraron productos para "${termino}"</p>
-                </div>
-            `;
+            container.innerHTML = `<div class="col-span-full text-center py-8"><i data-lucide="search-x" class="w-12 h-12 mx-auto text-slate-300 mb-3"></i><p class="text-slate-400">No se encontraron productos para "${termino}"</p></div>`;
         } else {
             container.innerHTML = '';
-            productosFiltrados.forEach(producto => {
-                const card = this.crearCardProducto(producto);
-                container.appendChild(card);
-            });
+            productosFiltrados.forEach(producto => container.appendChild(this.crearCardProducto(producto)));
         }
-        
         if (window.lucide) lucide.createIcons();
     },
     
     iniciarScanner() {
         document.getElementById('modalScanner')?.classList.add('active');
-        setTimeout(() => {
-            window.Sistema.mostrarToast('Escáner listo', 'info');
-        }, 500);
+        setTimeout(() => window.Sistema.mostrarToast('Escáner listo', 'info'), 500);
     },
     
     detenerScanner() {
@@ -719,21 +457,15 @@ const Ventas = {
     }
 };
 
-// Exponer globalmente
 window.Ventas = Ventas;
 
-// Escuchar eventos del sistema (con protección)
 if (window.Sistema && window.CONFIG) {
-    // Guardar referencia para poder remover después
     const stockUpdatedHandler = () => {
         if (document.getElementById('tabVentas')?.classList.contains('active')) {
             Ventas.renderizarProductos();
             Ventas.actualizarCarritoUI();
         }
     };
-    
     window.Sistema.on(window.CONFIG.EVENTOS.STOCK_ACTUALIZADO, stockUpdatedHandler);
-    
-    // Guardar handler para posible limpieza
     window._ventasStockHandler = stockUpdatedHandler;
 }

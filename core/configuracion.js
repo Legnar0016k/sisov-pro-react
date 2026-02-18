@@ -1,6 +1,7 @@
 /**
  * @file configuracion.js
- * @description Configuración del sistema
+ * @description Configuración del sistema y gestión de usuarios (UI).
+ * [REFACTOR] Depende de AuthSecurity para la lógica de licencias.
  */
 
 const Configuracion = {
@@ -20,9 +21,10 @@ const Configuracion = {
     },
     
     async abrirModalVendedor() {
-        const disponibles = await window.GestionLicencias?.actualizarContadorVendedores() || 0;
-        const limite = await window.GestionLicencias?.obtenerLimiteVendedores() || 0;
-        const actuales = await window.GestionLicencias?.contarVendedoresActuales() || 0;
+        // [REFACTOR] Usar AuthSecurity para límites
+        const disponibles = await window.AuthSecurity?.actualizarContadorVendedores() || 0;
+        const limite = await window.AuthSecurity?.obtenerLimiteVendedores() || 0;
+        const actuales = await window.AuthSecurity?.contarVendedoresActuales() || 0;
         
         if (actuales >= limite) {
             Swal.fire({
@@ -96,7 +98,6 @@ const Configuracion = {
         try {
             const admin = window.pb.authStore.model;
             
-            // Validar email único
             const existentes = await window.pb.collection('vendedores').getFullList({
                 filter: `email = "${datos.email}"`,
                 requestKey: `validar_email_${Date.now()}`,
@@ -137,7 +138,8 @@ const Configuracion = {
             window.Sistema.mostrarToast('Vendedor registrado', 'success');
             
             await this.cargarUsuarios();
-            await window.GestionLicencias?.actualizarContadorVendedores();
+            // [REFACTOR] Actualizar contador desde AuthSecurity
+            await window.AuthSecurity?.actualizarContadorVendedores();
             
         } catch (error) {
             console.error('Error:', error);
@@ -162,11 +164,9 @@ const Configuracion = {
             
             container.innerHTML = '';
             
-            // Admin
             const adminDiv = this.crearItemAdmin(admin);
             container.appendChild(adminDiv);
             
-            // Vendedores
             if (vendedores.length === 0) {
                 const emptyDiv = document.createElement('div');
                 emptyDiv.className = 'text-center py-4 text-slate-400 text-sm bg-slate-50 rounded-lg mt-2';
@@ -257,64 +257,14 @@ const Configuracion = {
         });
         
         if (key) {
-            await this.activarLicencia(key);
+            // [REFACTOR] Delegar a AuthSecurity
+            await window.AuthSecurity?.activarLicencia(key);
         }
     },
     
-    async activarLicencia(key) {
-        try {
-            const user = window.pb.authStore.model;
-            
-            const licencias = await window.pb.collection('licencias').getFullList({
-                filter: `key = "${key}"`,
-                requestKey: `buscar_licencia_${Date.now()}`,
-                $autoCancel: false
-            });
-            
-            if (licencias.length === 0) {
-                window.Sistema.mostrarToast('Clave no válida', 'error');
-                return;
-            }
-            
-            const licencia = licencias[0];
-            
-            if (licencia.is_usada) {
-                window.Sistema.mostrarToast('Licencia ya utilizada', 'error');
-                return;
-            }
-            
-            // Activar licencia
-            await window.pb.collection('licencias').update(licencia.id, {
-                user_id: user.id,
-                is_usada: true,
-                active: true,
-                estado: 'activa',
-                fecha_activacion: new Date().toISOString()
-            });
-            
-            await window.pb.collection('users').update(user.id, {
-                licence_id: licencia.id
-            });
-            
-            window.Sistema.mostrarToast('Licencia activada', 'success');
-            
-            await window.GestionLicencias?.cargarLicenciaUsuario(true);
-            
-        } catch (error) {
-            console.error('Error:', error);
-            window.Sistema.mostrarToast('Error al activar', 'error');
-        }
-    },
-    
+    // [REFACTOR] Este método ahora llama a AuthSecurity
     copiarLicencia() {
-        const licenciaKey = document.getElementById('licenciaKeyDisplay')?.title;
-        if (licenciaKey) {
-            navigator.clipboard.writeText(licenciaKey).then(() => {
-                window.Sistema.mostrarToast('Clave copiada', 'success');
-            }).catch(() => {
-                window.Sistema.mostrarToast('Error al copiar', 'error');
-            });
-        }
+        window.AuthSecurity?.copiarLicenciaAlPortapapeles();
     }
 };
 
