@@ -1,6 +1,7 @@
 /**
  * @file auth-security.js
  * @description Seguridad mejorada y GESTIÓN DE LICENCIAS unificada.
+ * @fix Corregido bucle infinito en validación de sesión
  */
 
 // ======================================================
@@ -8,19 +9,18 @@
 // ======================================================
 
 const SEGURIDAD_CONFIG = {
-    INACTIVITY_TIMEOUT: 30 * 60 * 1000, // 30 minutos
-    INACTIVITY_CHECK_INTERVAL: 60 * 1000, // 1 minuto
-    HEARTBEAT_INTERVAL: 60 * 1000, // 1 minuto
+    INACTIVITY_TIMEOUT: 30 * 60 * 1000,
+    INACTIVITY_CHECK_INTERVAL: 60 * 1000,
+    HEARTBEAT_INTERVAL: 60 * 1000,
     RECONEXION_INTENTOS: 5,
     RECONEXION_BASE_DELAY: 2000,
-    SESSION_ORPHAN_TIMEOUT: 5 * 60 * 1000, // 5 minutos
-    // [REFACTOR] Configuración de caché para licencias
-    LICENCIA_CACHE_TTL: 60000, // 1 minuto
-    LICENCIA_VERIFICACION_INTERVAL: 300000 // 5 minutos
+    SESSION_ORPHAN_TIMEOUT: 5 * 60 * 1000,
+    LICENCIA_CACHE_TTL: 60000,
+    LICENCIA_VERIFICACION_INTERVAL: 300000
 };
 
 // ======================================================
-// SEGURIDAD PRINCIPAL (AHORA INCLUYE GESTIÓN DE LICENCIAS)
+// SEGURIDAD PRINCIPAL
 // ======================================================
 
 const AuthSecurity = {
@@ -30,7 +30,6 @@ const AuthSecurity = {
         usuario: 2
     },
 
-    // [REFACTOR] Propiedades de Licencias integradas
     _licenciaActual: null,
     _cargandoLicencia: false,
     _ultimaVerificacionLicencia: null,
@@ -42,9 +41,9 @@ const AuthSecurity = {
     _reconectando: false,
     _sesionPresaLimpia: false,
     _validandoSesion: false,
+    _procesandoOnChange: false, // [FIX] Nueva bandera para evitar bucles
     _limpiarActividad: null,
 
-    // Getters para exponer el estado de la licencia de forma controlada
     get licenciaActual() {
         return this._licenciaActual;
     },
@@ -60,41 +59,52 @@ const AuthSecurity = {
     async inicializar() {
         console.log("[SEGURIDAD] Inicializando...");
         
-        // Configurar detección de actividad
         this.configurarDeteccionActividad();
-        
-        // Iniciar monitoreo de inactividad
         this.iniciarMonitoreoInactividad();
         
         if (window.pb?.authStore?.isValid) {
-            await this.validarSesionUnica();
-            await this.limpiarSesionesPresas();
-            // [REFACTOR] Cargar licencia al iniciar si hay sesión
+            // [FIX] No llamar a validarSesionUnica aquí, solo cargar datos
             await this.cargarLicenciaUsuario();
+            await this.limpiarSesionesPresas();
         }
         
-        // Escuchar cambios en autenticación
+        // [FIX] Configurar onChange con protección contra bucles
         window.pb?.authStore?.onChange(async (token) => {
-            if (token) {
-                this._ultimaActividad = Date.now();
-                if (!this._validandoSesion) {
-                    setTimeout(async () => {
-                        await this.validarSesionUnica();
-                        await this.limpiarSesionesPresas();
-                        // [REFACTOR] Recargar licencia al iniciar sesión
-                        await this.cargarLicenciaUsuario(true);
-                    }, 500);
+            // Prevenir ejecución si ya estamos procesando un cambio
+            if (this._procesandoOnChange) {
+                console.log("[SEGURIDAD] Ignorando onChange recursivo");
+                return;
+            }
+            
+            this._procesandoOnChange = true;
+            
+            try {
+                if (token) {
+                    this._ultimaActividad = Date.now();
+                    console.log("[SEGURIDAD] Token detectado, actualizando estado");
+                    
+                    // [FIX] No validar sesión aquí, solo cargar datos básicos
+                    await this.cargarLicenciaUsuario(true);
+                    
+                    // Iniciar heartbeat solo si hay sesión válida
+                    if (window.pb?.authStore?.isValid) {
+                        this.iniciarHeartbeat();
+                    }
+                } else {
+                    console.log("[SEGURIDAD] Sesión cerrada, limpiando estado");
+                    this.detenerMonitoreoInactividad();
+                    this.detenerHeartbeat();
+                    this._licenciaActual = null;
+                    this.detenerVerificacionPeriodicaLicencia();
                 }
-            } else {
-                this.detenerMonitoreoInactividad();
-                this.detenerHeartbeat();
-                // [REFACTOR] Limpiar licencia al cerrar sesión
-                this._licenciaActual = null;
-                this.detenerVerificacionPeriodicaLicencia();
+            } finally {
+                // Liberar la bandera después de un delay para evitar múltiples ejecuciones
+                setTimeout(() => {
+                    this._procesandoOnChange = false;
+                }, 1000);
             }
         });
 
-        // [REFACTOR] Iniciar verificación periódica de licencia
         this.iniciarVerificacionPeriodicaLicencia();
         
         console.log("[SEGURIDAD] Listo");
@@ -157,20 +167,19 @@ const AuthSecurity = {
             window.Sistema?.mostrarVistaLogin?.();
             this.detenerMonitoreoInactividad();
             this.detenerHeartbeat();
-            // [REFACTOR] Asegurar limpieza de licencia
             this._licenciaActual = null;
             this.detenerVerificacionPeriodicaLicencia();
         }
     },
 
     // ======================================================
-    // GESTIÓN DE LICENCIAS (CÓDIGO CONSOLIDADO)
+    // GESTIÓN DE LICENCIAS
     // ======================================================
 
     iniciarVerificacionPeriodicaLicencia() {
         if (this._intervaloVerificacionLicencia) clearInterval(this._intervaloVerificacionLicencia);
         this._intervaloVerificacionLicencia = setInterval(() => {
-            if (window.pb?.authStore?.isValid) {
+            if (window.pb?.authStore?.isValid && !this._procesandoOnChange) {
                 this.verificarEstadoLicencia().catch(e => console.warn("[LICENCIAS] Error en verif. periódica:", e));
             }
         }, SEGURIDAD_CONFIG.LICENCIA_VERIFICACION_INTERVAL);
@@ -184,8 +193,9 @@ const AuthSecurity = {
     },
 
     async cargarLicenciaUsuario(forzar = false) {
-        if (this._cargandoLicencia && !forzar) {
-            console.log("[LICENCIAS] Cargando licencia...");
+        // [FIX] Prevenir llamadas recursivas
+        if (this._cargandoLicencia) {
+            console.log("[LICENCIAS] Ya cargando, ignorando...");
             return this._licenciaActual;
         }
 
@@ -207,13 +217,15 @@ const AuthSecurity = {
 
             console.log("[LICENCIAS] Buscando licencia para:", user.id);
 
+            // [FIX] Usar $autoCancel: true para evitar múltiples peticiones
             const licencias = await window.pb.collection('licencias').getFullList({
                 filter: `user_id = "${user.id}" && active = true`,
                 requestKey: `licencia_${Date.now()}`,
-                $autoCancel: false
+                $autoCancel: true, // Cambiado a true para cancelar peticiones duplicadas
+                $cancelKey: `licencia_user_${user.id}` // Clave para agrupar cancelaciones
             }).catch(error => {
-                if (error.status === 0) {
-                    console.warn("[LICENCIAS] Error de red, usando cache");
+                if (error.status === 0 || error.name === 'AbortError') {
+                    console.warn("[LICENCIAS] Error de red o petición cancelada, usando cache");
                     return this._licenciaActual ? [this._licenciaActual] : [];
                 }
                 throw error;
@@ -233,8 +245,10 @@ const AuthSecurity = {
             return null;
 
         } catch (error) {
-            console.error("[LICENCIAS] Error:", error);
-            window.Sistema?.manejarError('cargar_licencia', error, false);
+            if (error.name !== 'AbortError') {
+                console.error("[LICENCIAS] Error:", error);
+                window.Sistema?.manejarError('cargar_licencia', error, false);
+            }
             return null;
         } finally {
             this._cargandoLicencia = false;
@@ -247,10 +261,14 @@ const AuthSecurity = {
         try {
             const licenciaServer = await window.pb.collection('licencias').getOne(
                 this._licenciaActual.id,
-                { requestKey: `verificar_${Date.now()}`, $autoCancel: false }
+                { 
+                    requestKey: `verificar_${Date.now()}`, 
+                    $autoCancel: true,
+                    $cancelKey: `verificar_licencia_${this._licenciaActual.id}`
+                }
             ).catch(error => {
-                if (error.status === 0) {
-                    console.warn("[LICENCIAS] Error de red en verificación");
+                if (error.status === 0 || error.name === 'AbortError') {
+                    console.warn("[LICENCIAS] Error de red o petición cancelada en verificación");
                     return this._licenciaActual;
                 }
                 throw error;
@@ -277,15 +295,16 @@ const AuthSecurity = {
             return estado === 'activa';
 
         } catch (error) {
-            console.error("[LICENCIAS] Error verificando:", error);
-            if (this._licenciaActual) {
-                this.actualizarUILicencia('verificando', null);
+            if (error.name !== 'AbortError') {
+                console.error("[LICENCIAS] Error verificando:", error);
+                if (this._licenciaActual) {
+                    this.actualizarUILicencia('verificando', null);
+                }
             }
             return false;
         }
     },
 
-    // [REFACTOR] Método de UI para actualizar badges de licencia (antes en GestionLicencias)
     actualizarUILicencia(estado, fechaExpiracion) {
         const badge = document.getElementById('statusLicenciaGlobal');
         const detalleTexto = document.getElementById('detalleLicenciaTexto');
@@ -398,7 +417,7 @@ const AuthSecurity = {
             const vendedores = await window.pb.collection('vendedores').getFullList({
                 filter: `admin_id = "${user.id}"`,
                 requestKey: `conteo_${Date.now()}`,
-                $autoCancel: false
+                $autoCancel: true
             });
             return vendedores.length;
         } catch (error) {
@@ -426,7 +445,6 @@ const AuthSecurity = {
         }
     },
 
-    // [REFACTOR] Método de activación de licencia (antes en configuracion.js)
     async activarLicencia(key) {
         try {
             const user = window.pb?.authStore?.model;
@@ -435,7 +453,7 @@ const AuthSecurity = {
             const licencias = await window.pb.collection('licencias').getFullList({
                 filter: `key = "${key}"`,
                 requestKey: `buscar_licencia_${Date.now()}`,
-                $autoCancel: false
+                $autoCancel: true
             });
 
             if (licencias.length === 0) {
@@ -495,7 +513,7 @@ const AuthSecurity = {
             const sesionesActivas = await window.pb.collection('users').getFullList({
                 filter: `id = "${user.id}" && is_online = true && last_seen < "${fechaLimite}"`,
                 requestKey: `limpiar_${Date.now()}`,
-                $autoCancel: false
+                $autoCancel: true
             }).catch(e => { console.warn("[SEGURIDAD] Error buscando sesiones presas:", e); return []; });
 
             if (sesionesActivas.length > 0) {
@@ -524,7 +542,9 @@ const AuthSecurity = {
                 await window.pb?.health?.check?.();
 
                 console.log("[SEGURIDAD] Reconexión exitosa");
-                if (window.pb?.authStore?.isValid) await this.validarSesionUnica();
+                if (window.pb?.authStore?.isValid && !this._procesandoOnChange) {
+                    await this.cargarLicenciaUsuario();
+                }
                 this._reconectando = false;
                 return true;
             } catch (error) {
@@ -561,7 +581,11 @@ const AuthSecurity = {
     
     iniciarHeartbeat() {
         this.detenerHeartbeat();
-        this._heartbeatInterval = setInterval(async () => { await this.ejecutarHeartbeat(); }, SEGURIDAD_CONFIG.HEARTBEAT_INTERVAL);
+        this._heartbeatInterval = setInterval(async () => { 
+            if (!this._procesandoOnChange) {
+                await this.ejecutarHeartbeat(); 
+            }
+        }, SEGURIDAD_CONFIG.HEARTBEAT_INTERVAL);
     },
     
     detenerHeartbeat() {
@@ -572,14 +596,17 @@ const AuthSecurity = {
     },
     
     async ejecutarHeartbeat() {
-        if (!window.Sistema?.estado?.usuario) return;
+        if (!window.Sistema?.estado?.usuario || this._procesandoOnChange) return;
         try {
             await window.pb.collection('users').update(window.Sistema.estado.usuario.id, {
                 last_seen: new Date().toISOString()
-            }, { requestKey: `heartbeat_${Date.now()}`, $autoCancel: false });
+            }, { 
+                requestKey: `heartbeat_${Date.now()}`, 
+                $autoCancel: true,
+                $cancelKey: 'heartbeat'
+            });
 
-            // [REFACTOR] Verificar licencia en el heartbeat
-            if (window.pb?.authStore?.isValid) {
+            if (window.pb?.authStore?.isValid && !this._procesandoOnChange) {
                 await this.verificarEstadoLicencia();
             }
         } catch (error) {
@@ -628,19 +655,29 @@ const AuthSecurity = {
     },
 
     // ======================================================
-    // VALIDACIÓN DE SESIÓN
+    // VALIDACIÓN DE SESIÓN (Ahora solo se llama explícitamente)
     // ======================================================
     
     async validarSesionUnica() {
-        if (this._validandoSesion) { console.log("[SEGURIDAD] Ya validando sesión, ignorando..."); return true; }
+        if (this._validandoSesion) { 
+            console.log("[SEGURIDAD] Ya validando sesión, ignorando..."); 
+            return true; 
+        }
+        
         this._validandoSesion = true;
         const user = window.pb?.authStore?.model;
-        if (!user) { this._validandoSesion = false; return false; }
+        
+        if (!user) { 
+            this._validandoSesion = false; 
+            return false; 
+        }
+        
         const fingerprint = this.generarFingerprint();
 
         try {
             const serverUser = await window.pb.collection('users').getFirstListItem(`id = "${user.id}"`, {
-                requestKey: `validar_${Date.now()}`, $autoCancel: false
+                requestKey: `validar_${Date.now()}`, 
+                $autoCancel: true
             });
 
             if (serverUser.is_online && serverUser.session_id && serverUser.session_id !== fingerprint) {
@@ -661,7 +698,8 @@ const AuthSecurity = {
             const limiteTiempo = new Date(Date.now() - 60000).toISOString();
             const activos = await window.pb.collection('users').getList(1, 1, {
                 filter: `user_role = "${serverUser.user_role}" && is_online = true && id != "${user.id}" && last_seen > "${limiteTiempo}"`,
-                requestKey: `limite_${Date.now()}`, $autoCancel: false
+                requestKey: `limite_${Date.now()}`, 
+                $autoCancel: true
             });
 
             const limite = this.LIMITES[serverUser.user_role] || 2;
@@ -673,35 +711,30 @@ const AuthSecurity = {
             }
 
             await this.registrarSesion(user.id, fingerprint);
-            this.iniciarHeartbeat();
             console.log("[SEGURIDAD] Sesión validada");
             this._validandoSesion = false;
             return true;
         } catch (error) {
             console.error("[SEGURIDAD] Error:", error);
-            if (error.status === 0) {
-                console.warn("[SEGURIDAD] Error de red, usando sesión local");
-                this.iniciarHeartbeat();
-                this._validandoSesion = false;
-                return true;
-            }
             this._validandoSesion = false;
-            return true;
+            return true; // Permitir continuar en caso de error
         }
     },
 
     async registrarSesion(userId, fingerprint) {
         await window.pb.collection('users').update(userId, {
             session_id: fingerprint, is_online: true, last_seen: new Date().toISOString()
-        }, { requestKey: `registro_${Date.now()}`, $autoCancel: false });
+        }, { requestKey: `registro_${Date.now()}`, $autoCancel: true });
     }
 };
 
-// Inicializar
-if (window.Sistema) {
+// Inicializar solo cuando el DOM esté listo
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => AuthSecurity.inicializar());
+} else {
     AuthSecurity.inicializar();
 }
 
-// Exponer configuración y el objeto principal para otros módulos
+// Exponer configuración y el objeto principal
 window.SEGURIDAD_CONFIG = SEGURIDAD_CONFIG;
-window.AuthSecurity = AuthSecurity; // [REFACTOR] Exponer globalmente
+window.AuthSecurity = AuthSecurity;
