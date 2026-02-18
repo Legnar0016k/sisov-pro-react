@@ -1,5 +1,7 @@
 # Dependencias (Carpeta pesada que no se sube)
 node_modules/
+core_panel_master/
+v2.4_alpha/
 
 # --- SEGURIDAD CRÍTICA (Archivos Sensibles) ---
 # Bloqueamos el panel maestro y cualquier archivo de configuración sensible
