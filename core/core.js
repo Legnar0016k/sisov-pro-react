@@ -184,18 +184,19 @@ const Sistema = {
         }
     },
 
-    async validarTokenServidor(token, userId) {
-        try {
-            // Intentar obtener el usuario para validar que el token es válido
-            const user = await window.pb.collection('users').getOne(userId, {
-                requestKey: `validar_${Date.now()}`,
-                $autoCancel: false
-            });
-            
-            return !!user;
-        } catch {
-            return false;
-        }
+     async validarTokenServidor(token, userId) {
+            try {
+                // CORREGIDO: Usar getFirstListItem en lugar de getOne para colecciones auth
+                const user = await window.pb.collection('users').getFirstListItem(`id = "${userId}"`, {
+                    requestKey: `validar_${Date.now()}`,
+                    $autoCancel: false
+                });
+
+                return !!user;
+            } catch (error) {
+                console.warn("[SISTEMA] Error validando token:", error.message);
+                return false;
+            }
     },
 
     // ======================================================
