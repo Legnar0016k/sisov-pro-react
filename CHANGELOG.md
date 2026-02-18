@@ -393,3 +393,75 @@ Documento generado automáticamente mediante análisis de código fuente v4.0
 ### Cambiado
 - **core.js**: Micro-cirugía en `cerrarSesion` para incluir liberación de sesión en servidor y limpieza de `session_id` sin afectar la estética de SweetAlert2.
 - **app-manager.js**: Actualizado para inyectar la neurona de seguridad automáticamente al iniciar.
+
+## [18-02-2026] - Corrección de Errores 002
+### Cambios realizados:
+- **core/auth-security.js**: Se aplicó micro-cirugía para corregir errores de lógica.
+- Se centralizaron funciones de licencias dentro del archivo para evitar redundancia.
+- Limpieza de código y optimización de las validaciones de seguridad.
+
+## [2026-02-18] - Corrección de Errores 002
+### Cambios realizados:
+- **core/auth-security.js**: Se aplicó micro-cirugía para centralizar y corregir la lógica de licencias.
+- Se optimizaron las validaciones de seguridad dentro del archivo.
+- Limpieza de redundancias en el flujo de autenticación.
+
+## [2026-02-18] - Corrección de Errores 003
+### Cambios realizados:
+ **core/auth-security.js**🔧 Cambios Clave para Eliminar el Bucle
+Bandera _procesandoOnChange: Previene ejecuciones recursivas del onChange
+
+Eliminada llamada a validarSesionUnica en onChange: Ahora solo carga la licencia
+
+$autoCancel: true en todas las peticiones: Cancela peticiones duplicadas
+
+Verificación de _procesandoOnChange en intervalos: Evita ejecuciones durante cambios de estado
+
+Inicialización diferida: Espera a que el DOM esté listo
+
+✅ ¿Por qué esto soluciona el problema?
+Antes: Cada petición a PocketBase disparaba el onChange → loop infinito
+
+Ahora:
+
+onChange se protege con _procesandoOnChange
+No se valida sesión en cada cambio
+Las peticiones usan $autoCancel para evitar duplicados
+Los logs solo aparecerán cuando realmente cambie el estado
+📊 Resultado Esperado
+Después de implementar esta versión, deberías ver:
+
+Solo 1-2 logs al iniciar sesión, no decenas
+
+Heartbeat cada minuto (normal)
+
+Verificación de licencia cada 5 minutos (normal)
+
+Sin bucles ni saturación
+
+# Changelog
+
+## [3.5.2] - 2024-03-18
+
+### 🐛 Correcciones
+- **Panel Maestro**: Al asignar una licencia a un usuario, ahora se liberan TODAS las licencias anteriores que el usuario pudiera tener (anteriormente solo se asignaba la nueva sin liberar las viejas)
+- **Auth-Security**: Corregida la verificación de expiración - las licencias suspendidas ya no se reactivan automáticamente al verificarlas
+- **Panel Maestro**: Mejorada la validación de fecha de expiración antes de asignar una licencia
+
+### ✨ Mejoras
+- **Panel Maestro**: Optimizada la búsqueda de licencias por usuario para liberación masiva
+- **Auth-Security**: Separada la lógica de expiración: solo cambia a 'suspendida' si estaba 'activa'
+
+### 🔧 Técnico
+- Implementada liberación múltiple de licencias en panel maestro
+- Mejorado el manejo de estados en auth-security para evitar reactivaciones no deseadas
+- Optimizadas las consultas a PocketBase con filtros específicos
+
+### 📦 Archivos modificados
+- `core_m.js` (panel maestro): Función `asignarLicencia` mejorada
+- `auth-security.js`: Función `verificarEstadoLicencia` corregida
+
+### ✅ Estado actual
+- Panel maestro: asignación de licencias funciona correctamente liberando las anteriores
+- Auth-security: verificación de expiración mantiene estados correctamente
+- Sistema estable y funcional
