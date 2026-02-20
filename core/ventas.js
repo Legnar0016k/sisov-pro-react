@@ -345,6 +345,9 @@ const Ventas = {
         div.className = 'bg-white rounded-xl shadow border border-slate-200 p-4 card-hover';
         const stockClass = producto.stock > 10 ? 'badge-success' : producto.stock > 0 ? 'badge-warning' : 'badge-danger';
         
+        // Calcular precio en Bs
+        const precioBs = producto.price_usd * (window.Sistema.estado.tasaBCV || 0);
+        
         div.innerHTML = `
             <div class="mb-3">
                 <span class="text-xs font-semibold text-slate-500">${producto.category || 'General'}</span>
@@ -353,8 +356,10 @@ const Ventas = {
             </div>
             <div class="flex items-center justify-between mb-4">
                 <div>
-                    <span class="text-lg font-bold text-primary">${window.Sistema.formatearMoneda(producto.price_usd)}</span>
-                    <p class="text-xs text-slate-500">${window.Sistema.formatearMoneda(producto.price_usd * window.Sistema.estado.tasaBCV, 'VES')}</p>
+                    <!-- Bs primero y destacado -->
+                    <span class="text-lg font-bold text-primary">${window.Sistema.formatearMoneda(precioBs, 'VES')}</span>
+                    <!-- USD después y secundario -->
+                    <p class="text-xs text-slate-500">${window.Sistema.formatearMoneda(producto.price_usd)}</p>
                 </div>
                 <span class="badge ${stockClass}" title="Stock actual: ${producto.stock} unidades">${producto.stock} uds.</span>
             </div>
