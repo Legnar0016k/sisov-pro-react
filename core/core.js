@@ -579,6 +579,22 @@ const Sistema = {
         }, 3000);
     },
 
+    cerrarInfoMessage() {
+    const infoMessage = document.getElementById('infoMessage');
+    if (infoMessage) {
+        infoMessage.innerHTML = ''; // Limpiar contenido
+        infoMessage.className = 'mb-6 hidden'; // Ocultarlo
+        // No eliminamos dataset.custom para que sepa que fue cerrado manualmente
+        infoMessage.dataset.closed = 'true';
+        
+        // Programar para que vuelva a aparecer en 1 hora si la causa persiste
+        setTimeout(() => {
+            delete infoMessage.dataset.closed;
+            this.verificarBloqueoPorTasa(); // Re-evaluar
+        }, 60 * 60 * 1000); // 1 hora
+    }
+},
+
     sanitizarTexto(texto) {
         if (!texto) return '';
         return String(texto)
@@ -870,65 +886,47 @@ const Sistema = {
         return vigencia.vigente;
     },
 
+    // En core.js - Modificar iniciarVerificadorVigenciaTasa
+
     iniciarVerificadorVigenciaTasa() {
         // Verificar cada 30 minutos
         this._vigenciaInterval = setInterval(() => {
             if (this._estado.config.tasaManual) {
                 const vigencia = this.verificarVigenciaTasaManual();
-                
+
                 if (!vigencia.vigente) {
                     // Tasa expiró durante la sesión
                     console.log("[SISTEMA] Tasa manual expirada durante la sesión");
                     this._estado.config.tasaManual = false;
                     localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
-                    
+
                     this.actualizarBadgeTasaManual();
+
+                    // NUEVO: Resetear el estado cerrado para que vuelva a aparecer
+                    const infoMessage = document.getElementById('infoMessage');
+                    if (infoMessage) {
+                        delete infoMessage.dataset.closed;
+                    }
+
                     this.verificarBloqueoPorTasa();
-                    this.mostrarAdvertenciaTasaExpirada();
                     this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: false });
                 } else if (vigencia.horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS && vigencia.horasRestantes > 0) {
                     // Advertir que está por expirar (solo una vez por sesión para no spamear)
                     if (!this._advertenciaMostrada) {
                         this.mostrarToast(`⚠️ Tu tasa manual expirará en ${vigencia.horasRestantes.toFixed(1)} horas.`, 'warning');
                         this._advertenciaMostrada = true;
-                        
+
                         // Resetear la bandera después de 1 hora
                         setTimeout(() => {
                             this._advertenciaMostrada = false;
                         }, 60 * 60 * 1000);
                     }
                 }
-                
+
                 // Actualizar badge con horas restantes
                 this.actualizarBadgeTasaManual();
             }
         }, 30 * 60 * 1000); // Cada 30 minutos
-    },
-
-    mostrarAdvertenciaTasaExpirada() {
-        const infoMessage = document.getElementById('infoMessage');
-        if (!infoMessage) return;
-        
-        const vigencia = this.verificarVigenciaTasaManual();
-        const fechaExpiracion = vigencia.expiradoEn || 'desconocida';
-        
-        infoMessage.innerHTML = `
-            <i data-lucide="clock" class="text-red-600 w-5 h-5"></i>
-            <div class="flex-1">
-                <p class="text-red-800 text-sm font-medium">
-                    <span class="font-bold">⏰ TASA MANUAL EXPIRADA:</span> La tasa configurada superó las 24h de vigencia.
-                </p>
-                <p class="text-red-700 text-xs mt-1">
-                    Expiró el ${fechaExpiracion}. Por favor, verifica la tasa del día y configúrala nuevamente.
-                </p>
-            </div>
-            <button onclick="Sistema.mostrarModalTasa()" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-600 transition-colors ml-auto">
-                Configurar Nueva Tasa
-            </button>
-        `;
-        infoMessage.className = 'mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3';
-        
-        if (window.lucide) lucide.createIcons();
     },
 
     verificarBloqueoPorTasa() {
@@ -962,81 +960,75 @@ const Sistema = {
             }
         }
         
-        // Actualizar mensaje informativo
-        this.actualizarMensajeTasa(tieneTasa);
+        // Actualizar mensaje informativo SOLO si no fue cerrado manualmente
+        const infoMessage = document.getElementById('infoMessage');
+        if (infoMessage && !infoMessage.dataset.closed) {
+            this.actualizarMensajeTasa(tieneTasa);
+        }
     },
 
-    actualizarMensajeTasa(tieneTasa) {
-        const infoMessage = document.getElementById('infoMessage');
-        if (!infoMessage) return;
-        
-        if (!tieneTasa) {
-            // Verificar si hay tasa expirada
-            const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
-            const tasaActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
-            
-            if (tasaManualGuardada && tasaActiva) {
-                // Hay tasa pero expiró
-                const vigencia = this.verificarVigenciaTasaManual();
-                if (!vigencia.vigente) {
-                    this.mostrarAdvertenciaTasaExpirada();
-                    return;
-                }
-            }
-            
-            // No hay tasa configurada
-            infoMessage.innerHTML = `
-                <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
-                <div class="flex-1">
-                    <p class="text-amber-800 text-sm font-medium">
-                        <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
-                    </p>
-                    <p class="text-amber-700 text-xs mt-1">
-                        La tasa tendrá una vigencia de 24 horas. Después de ese periodo, deberás actualizarla.
-                    </p>
-                </div>
-                <button onclick="Sistema.mostrarModalTasa()" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-amber-600 transition-colors ml-auto">
-                    Configurar Tasa
-                </button>
-            `;
-            infoMessage.className = 'mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl flex items-center gap-3';
-        } else {
-            // Hay tasa vigente, mostrar información
-            const vigencia = this.verificarVigenciaTasaManual();
-            const expiraEn = vigencia.expiraEn || 'N/A';
-            const horasRestantes = vigencia.horasRestantes || 24;
-            
-            // Determinar color según tiempo restante
-            let bgColor = 'bg-green-50';
-            let borderColor = 'border-green-500';
-            let textColor = 'text-green-800';
-            let iconColor = 'text-green-600';
-            
-            if (horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS) {
-                bgColor = 'bg-amber-50';
-                borderColor = 'border-amber-500';
-                textColor = 'text-amber-800';
-                iconColor = 'text-amber-600';
-            }
-            
-            infoMessage.innerHTML = `
-                <i data-lucide="check-circle" class="${iconColor} w-5 h-5"></i>
-                <div class="flex-1">
-                    <p class="${textColor} text-sm font-medium">
-                        <span class="font-bold">✅ TASA MANUAL ACTIVA:</span> ${this._estado.tasaBCV.toFixed(2)} Bs/$
-                    </p>
-                    <p class="${textColor.replace('800', '700')} text-xs mt-1">
-                        ⏱️ Vigente hasta: ${expiraEn} • ${horasRestantes}h restantes
-                    </p>
-                </div>
-                <button onclick="Sistema.mostrarModalTasa()" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors ml-auto">
-                    Actualizar Tasa
-                </button>
-            `;
-            infoMessage.className = `mb-6 p-4 ${bgColor} border-l-4 ${borderColor} rounded-r-xl flex items-center gap-3`;
-        }
-        
-        if (window.lucide) lucide.createIcons();
+      actualizarMensajeTasa(tieneTasa) {
+      const infoMessage = document.getElementById('infoMessage');
+      if (!infoMessage) return;
+      
+      // Si ya tiene un mensaje personalizado y no es de tasa, respetarlo
+      if (infoMessage.dataset.custom && infoMessage.dataset.custom !== 'tasa') {
+          return;
+      }
+      
+      if (!tieneTasa) {
+          // Verificar si hay tasa expirada
+          const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
+          const tasaActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
+          
+          if (tasaManualGuardada && tasaActiva) {
+              const vigencia = this.verificarVigenciaTasaManual();
+              if (!vigencia.vigente) {
+                  // Tasa expirada
+                  infoMessage.innerHTML = `
+                      <i data-lucide="clock" class="text-red-600 w-5 h-5"></i>
+                      <p class="text-red-800 text-sm font-medium flex-1">
+                          <span class="font-bold">⏰ TASA EXPIRADA:</span> La tasa manual ha superado las 24h de vigencia.
+                      </p>
+                      <button onclick="Sistema.cerrarInfoMessage()" class="text-red-400 hover:text-red-600">
+                          <i data-lucide="x" class="w-4 h-4"></i>
+                      </button>
+                  `;
+                  infoMessage.className = 'mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3';
+                  infoMessage.dataset.custom = 'tasa';
+                  if (window.lucide) lucide.createIcons();
+                  return;
+              }
+          }
+          
+          // No hay tasa configurada
+          infoMessage.innerHTML = `
+              <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
+              <p class="text-amber-800 text-sm font-medium flex-1">
+                  <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
+              </p>
+              <button onclick="Sistema.cerrarInfoMessage()" class="text-amber-400 hover:text-amber-600">
+                  <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+          `;
+          infoMessage.className = 'mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl flex items-center gap-3';
+          infoMessage.dataset.custom = 'tasa';
+      } else {
+          // Hay tasa vigente, restaurar mensaje original (nota de productos)
+          infoMessage.innerHTML = `
+              <i data-lucide="info" class="text-blue-600 w-5 h-5"></i>
+              <p class="text-blue-800 text-sm font-medium flex-1">
+                  <span class="font-bold">Nota:</span> Si no visualizas los productos, presiona cualquier pestaña del menú superior para refrescar.
+              </p>
+              <button onclick="Sistema.cerrarInfoMessage()" class="text-blue-400 hover:text-blue-600">
+                  <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+          `;
+          infoMessage.className = 'mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-r-xl flex items-center gap-3';
+          delete infoMessage.dataset.custom;
+      }
+      
+      if (window.lucide) lucide.createIcons();
     },
 
     // ======================================================
