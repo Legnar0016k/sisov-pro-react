@@ -1,7 +1,7 @@
 /**
  * @file core.js
  * @description Núcleo del sistema con estado transaccional y manejo robusto de errores
- * @version 3.5.3 - Tasa manual con TTL de 24h y gestión de vigencia
+ * @version 4.0.0 - Versión limpia, tasas y tiempo movidos a módulos específicos
  */
 
 // ======================================================
@@ -9,7 +9,7 @@
 // ======================================================
 
 const CONFIG = {
-    VERSION: "3.5.3",
+    VERSION: "4.0.0",
     TIMEOUTS: {
         OPERACION: 10000,
         RED: 15000,
@@ -18,15 +18,7 @@ const CONFIG = {
     STORAGE_KEYS: {
         TOKEN: 'sisov_token',
         USER: 'sisov_user',
-        CARRITO: 'sisov_carrito',
-        TASA: 'sisov_tasa_manual',
-        TASA_MANUAL_ACTIVA: 'sisov_tasa_manual_activa',
-        TASA_TIMESTAMP: 'sisov_tasa_timestamp'
-    },
-    TASA_CONFIG: {
-        TASA_TTL: 24 * 60 * 60 * 1000, // 24 horas en milisegundos
-        TASA_WARNING_HOURS: 2, // Advertir 2 horas antes de expirar
-        TASA_EXPIRADA_HOURS: 24
+        CARRITO: 'sisov_carrito'
     },
     EVENTOS: {
         STOCK_ACTUALIZADO: 'sisov:stockUpdated',
@@ -48,24 +40,22 @@ const Sistema = {
     // Estado con validación de tipos
     _estado: {
         usuario: null,
-        tasaBCV: 0,
+        tasaBCV: 0, // Solo almacena, la lógica está en Configuracion
         productos: [],
         carrito: [],
         ventas: [],
         config: {
             tasaManual: false,
-            serverTime: null,
+            serverTime: null, // Solo almacena, la lógica está en TimeModule
             ultimaSincronizacion: null,
-            tasaVigencia: null // Guardar info de vigencia
+            tasaVigencia: null // Solo almacena, la lógica está en Configuracion
         },
-        transacciones: new Map(), // Para operaciones atómicas
-        listeners: new Map() // Para eventos
+        transacciones: new Map(),
+        listeners: new Map()
     },
 
-    // Controladores de abort para fetch
     _abortControllers: new Map(),
 
-    // Getters/Setters con validación
     get estado() {
         return this._estado;
     },
@@ -84,11 +74,17 @@ const Sistema = {
         const operacion = this.iniciarTransaccion('inicializacion');
         
         try {
-            // 1. Sincronizar hora del servidor
-            await this.actualizarHoraServidor();
+            // 1. Sincronizar hora del servidor (delegado a TimeModule)
+            if (window.TimeModule) {
+                await window.TimeModule.sincronizarHoraServidor();
+                this._estado.config.serverTime = window.TimeModule._horaActual;
+                this._estado.config.ultimaSincronizacion = Date.now();
+            }
             
-            // 2. Cargar tasa BCV (con restauración de manual y verificación TTL)
-            await this.cargarTasaBCV();
+            // 2. Cargar tasa BCV (delegado a Configuracion)
+            if (window.Configuracion) {
+                await window.Configuracion.cargarTasaBCV();
+            }
             
             // 3. Restaurar sesión si existe
             await this.restaurarSesion();
@@ -99,10 +95,7 @@ const Sistema = {
             // 5. Iniciar heartbeat de seguridad
             this.iniciarHeartbeat();
             
-            // 6. Iniciar verificador periódico de vigencia de tasa
-            this.iniciarVerificadorVigenciaTasa();
-            
-            // 7. Si hay usuario, cargar datos iniciales
+            // 6. Si hay usuario, cargar datos iniciales
             if (this._estado.usuario) {
                 await this.cargarDatosIniciales();
             }
@@ -119,7 +112,7 @@ const Sistema = {
     },
 
     // ======================================================
-    // FETCH CON TIMEOUT MEDIANTE ABORTCONTROLLER
+    // FETCH CON TIMEOUT (se mantiene para uso interno)
     // ======================================================
 
     async fetchConTimeout(url, options = {}, timeout = CONFIG.TIMEOUTS.RED) {
@@ -154,7 +147,6 @@ const Sistema = {
         }
     },
 
-    // Cancelar todas las peticiones pendientes (útil al cerrar sesión)
     cancelarPeticionesPendientes() {
         this._abortControllers.forEach((controller, id) => {
             controller.abort();
@@ -173,7 +165,6 @@ const Sistema = {
             const userData = localStorage.getItem(CONFIG.STORAGE_KEYS.USER);
             
             if (token && userData) {
-                // Validar token con el servidor
                 const usuario = JSON.parse(userData);
                 const valido = await this.validarTokenServidor(token, usuario.id);
                 
@@ -197,19 +188,17 @@ const Sistema = {
         }
     },
 
-     async validarTokenServidor(token, userId) {
-            try {
-                // CORREGIDO: Usar getFirstListItem en lugar de getOne para colecciones auth
-                const user = await window.pb.collection('users').getFirstListItem(`id = "${userId}"`, {
-                    requestKey: `validar_${Date.now()}`,
-                    $autoCancel: false
-                });
-
-                return !!user;
-            } catch (error) {
-                console.warn("[SISTEMA] Error validando token:", error.message);
-                return false;
-            }
+    async validarTokenServidor(token, userId) {
+        try {
+            const user = await window.pb.collection('users').getFirstListItem(`id = "${userId}"`, {
+                requestKey: `validar_${Date.now()}`,
+                $autoCancel: false
+            });
+            return !!user;
+        } catch (error) {
+            console.warn("[SISTEMA] Error validando token:", error.message);
+            return false;
+        }
     },
 
     // ======================================================
@@ -241,7 +230,6 @@ const Sistema = {
         
         this._estado.transacciones.set(id, transaccion);
         
-        // Timeout automático
         setTimeout(() => {
             if (this._estado.transacciones.has(id) && transaccion.estado === 'pendiente') {
                 transaccion.fallar(new Error(`Timeout en transacción ${nombre}`));
@@ -259,19 +247,16 @@ const Sistema = {
         const tx = this.iniciarTransaccion(`ajuste_stock_${productoId}`);
         
         try {
-            // 1. Validar producto
             const producto = this._estado.productos.find(p => p.id === productoId);
             if (!producto) {
                 throw new Error(`Producto ${productoId} no encontrado`);
             }
             
-            // 2. Validar stock resultante
             const nuevoStock = producto.stock + cantidad;
             if (nuevoStock < 0) {
                 throw new Error(`Stock insuficiente. Actual: ${producto.stock}, solicitado: ${-cantidad}`);
             }
             
-            // 3. Realizar actualización atómica en servidor
             const resultado = await window.pb.collection('products').update(productoId, {
                 stock: nuevoStock
             }, {
@@ -279,10 +264,8 @@ const Sistema = {
                 $autoCancel: false
             });
             
-            // 4. Actualizar memoria local
             producto.stock = nuevoStock;
             
-            // 5. Registrar en log
             await this.registrarLog('AJUSTE_STOCK', {
                 producto_id: productoId,
                 producto_nombre: producto.name_p,
@@ -293,7 +276,6 @@ const Sistema = {
                 metadata
             });
             
-            // 6. Emitir evento
             this.emitirEvento(CONFIG.EVENTOS.STOCK_ACTUALIZADO, {
                 productoId,
                 stockAnterior: producto.stock - cantidad,
@@ -317,7 +299,6 @@ const Sistema = {
             const resultados = [];
             const errores = [];
             
-            // Procesar en orden para evitar deadlocks
             for (const ajuste of ajustes) {
                 try {
                     const resultado = await this.ajustarStock(
@@ -333,7 +314,6 @@ const Sistema = {
                         error: error.message
                     });
                     
-                    // Si hay error crítico, revertir cambios anteriores
                     if (ajuste.critical) {
                         throw new Error(`Error crítico en ${ajuste.productoId}: ${error.message}`);
                     }
@@ -349,7 +329,6 @@ const Sistema = {
             return { resultados, errores };
             
         } catch (error) {
-            // Revertir cambios si es necesario
             await this.revertirAjustes(resultados || [], razon);
             tx.fallar(error);
             throw error;
@@ -361,7 +340,6 @@ const Sistema = {
         
         for (const ajuste of ajustesRealizados.reverse()) {
             try {
-                // Extraer el ID del producto del resultado
                 const productoId = ajuste.id || ajuste.productoId;
                 const cambio = ajuste.cambio || 0;
                 
@@ -388,7 +366,6 @@ const Sistema = {
         }
         this._estado.listeners.get(evento).add(callback);
         
-        // Retornar función para remover
         return () => this.off(evento, callback);
     },
 
@@ -411,7 +388,7 @@ const Sistema = {
     },
 
     // ======================================================
-    // LOGGING Y ERRORES (MEJORADO)
+    // LOGGING Y ERRORES
     // ======================================================
 
     async registrarLog(tipo, datos) {
@@ -425,10 +402,8 @@ const Sistema = {
                 session_id: this._estado.usuario?.session_id || null
             };
             
-            // Guardar en localStorage como backup
             this.guardarLogLocal(logEntry);
             
-            // Intentar guardar en servidor (no bloquear)
             if (window.pb) {
                 window.pb.collection('system_logs').create(logEntry, {
                     $autoCancel: false,
@@ -448,15 +423,12 @@ const Sistema = {
             const logs = JSON.parse(localStorage.getItem('sisov_logs') || '[]');
             logs.push(logEntry);
             
-            // Mantener solo últimos 100 logs
             if (logs.length > 100) {
                 logs.shift();
             }
             
             localStorage.setItem('sisov_logs', JSON.stringify(logs));
-        } catch (error) {
-            // Ignorar errores de localStorage
-        }
+        } catch (error) {}
     },
 
     manejarError(contexto, error, mostrarAlUsuario = true) {
@@ -464,7 +436,6 @@ const Sistema = {
         
         console.error(`[ERROR:${errorId}] ${contexto}:`, error);
         
-        // Registrar error
         this.registrarLog('ERROR', {
             error_id: errorId,
             contexto,
@@ -477,14 +448,12 @@ const Sistema = {
             }
         });
         
-        // Emitir evento de error
         this.emitirEvento(CONFIG.EVENTOS.ERROR, {
             errorId,
             contexto,
             mensaje: error.message || 'Error desconocido'
         });
         
-        // Mostrar al usuario si es necesario
         if (mostrarAlUsuario) {
             this.mostrarToast(error.message || 'Error inesperado', 'error');
         }
@@ -500,7 +469,6 @@ const Sistema = {
         this._heartbeatInterval = setInterval(async () => {
             if (this._estado.usuario) {
                 try {
-                    // Verificar sesión activa
                     const user = await window.pb.collection('users').getOne(this._estado.usuario.id, {
                         requestKey: `heartbeat_${Date.now()}`,
                         $autoCancel: false
@@ -516,7 +484,6 @@ const Sistema = {
                         this.cerrarSesionForzada();
                     }
                     
-                    // Verificar licencia si existe
                     if (window.GestionLicencias) {
                         await window.GestionLicencias.verificarEstadoLicencia();
                     }
@@ -528,14 +495,12 @@ const Sistema = {
                     }
                 }
             }
-        }, 60000); // Cada minuto
+        }, 60000);
     },
 
     cerrarSesionForzada() {
-        // Cancelar peticiones pendientes
         this.cancelarPeticionesPendientes();
         
-        // Limpiar intervalo de heartbeat
         if (this._heartbeatInterval) {
             clearInterval(this._heartbeatInterval);
         }
@@ -552,17 +517,15 @@ const Sistema = {
     },
 
     // ======================================================
-    // MÉTODOS DE UI (MEJORADOS - SIN XSS)
+    // MÉTODOS DE UI
     // ======================================================
 
     mostrarToast(mensaje, tipo = 'info') {
-        // Sanitizar mensaje para evitar XSS
         const mensajeSanitizado = this.sanitizarTexto(mensaje);
         
         const toast = document.createElement('div');
         toast.className = `toast toast-${tipo}`;
         
-        // Usar textContent en lugar de innerHTML para la parte del mensaje
         const icono = this.getIconoToast(tipo);
         
         toast.innerHTML = `<div class="flex items-center gap-2">${icono}</div>`;
@@ -580,20 +543,18 @@ const Sistema = {
     },
 
     cerrarInfoMessage() {
-    const infoMessage = document.getElementById('infoMessage');
-    if (infoMessage) {
-        infoMessage.innerHTML = ''; // Limpiar contenido
-        infoMessage.className = 'mb-6 hidden'; // Ocultarlo
-        // No eliminamos dataset.custom para que sepa que fue cerrado manualmente
-        infoMessage.dataset.closed = 'true';
-        
-        // Programar para que vuelva a aparecer en 1 hora si la causa persiste
-        setTimeout(() => {
-            delete infoMessage.dataset.closed;
-            this.verificarBloqueoPorTasa(); // Re-evaluar
-        }, 60 * 60 * 1000); // 1 hora
-    }
-},
+        const infoMessage = document.getElementById('infoMessage');
+        if (infoMessage) {
+            infoMessage.innerHTML = '';
+            infoMessage.className = 'mb-6 hidden';
+            infoMessage.dataset.closed = 'true';
+            
+            setTimeout(() => {
+                delete infoMessage.dataset.closed;
+                this.verificarBloqueoPorTasa();
+            }, 60 * 60 * 1000);
+        }
+    },
 
     sanitizarTexto(texto) {
         if (!texto) return '';
@@ -672,23 +633,22 @@ const Sistema = {
 
     async cargarDatosIniciales() {
         try {
-            // Cargar productos
             if (window.Inventario) {
                 await window.Inventario.cargarProductos();
             }
 
-            // Cargar carrito persistente
             if (window.Ventas) {
                 window.Ventas.cargarCarritoPersistente();
             }
 
-            // Cargar licencia usando AuthSecurity (NO GestionLicencias)
             if (window.AuthSecurity) {
                 await window.AuthSecurity.cargarLicenciaUsuario();
             }
 
-            // Verificar tasa manual y bloquear si es necesario
-            this.verificarBloqueoPorTasa();
+            // Verificar tasa manual y bloquear si es necesario (delegado)
+            if (window.Configuracion && window.Configuracion.tieneTasaManualActiva) {
+                this.verificarBloqueoPorTasa();
+            }
 
         } catch (error) {
             this.manejarError('carga_datos_iniciales', error, false);
@@ -714,10 +674,8 @@ const Sistema = {
         
         if (result.isConfirmed) {
             try {
-                // Cancelar peticiones pendientes
                 this.cancelarPeticionesPendientes();
                 
-                // Limpiar intervalo de heartbeat
                 if (this._heartbeatInterval) {
                     clearInterval(this._heartbeatInterval);
                 }
@@ -745,199 +703,21 @@ const Sistema = {
     },
 
     // ======================================================
-    // TASA BCV - VERSIÓN CON TTL Y VIGENCIA
+    // MÉTODOS DE TASA (AHORA DELEGADOS)
     // ======================================================
-
-    async cargarTasaBCV() {
-        try {
-            // PRIMERO: Verificar si hay tasa manual guardada
-            const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
-            const tasaManualActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
-            const tasaTimestamp = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
-            
-            if (tasaManualGuardada && tasaManualActiva && tasaTimestamp) {
-                // Verificar vigencia
-                const vigencia = this.verificarVigenciaTasaManual();
-                
-                if (vigencia.vigente) {
-                    // Restaurar tasa manual vigente
-                    this._estado.tasaBCV = parseFloat(tasaManualGuardada);
-                    this._estado.config.tasaManual = true;
-                    this._estado.config.tasaVigencia = vigencia;
-                    
-                    console.log("[SISTEMA] Tasa manual restaurada (vigente):", this._estado.tasaBCV);
-                    console.log(`[SISTEMA] Vigencia: ${vigencia.horasTranscurridas}h transcurridas, ${vigencia.horasRestantes}h restantes`);
-                    
-                    this.actualizarTasaUI();
-                    this.actualizarBadgeTasaManual();
-                    this.verificarBloqueoPorTasa();
-                    this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: true, vigencia });
-                    
-                    // Advertir si está por expirar
-                    if (vigencia.horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS && vigencia.horasRestantes > 0) {
-                        this.mostrarToast(`⚠️ Tu tasa manual expirará en ${vigencia.horasRestantes.toFixed(1)} horas. Considera actualizarla.`, 'warning');
-                    }
-                    
-                    return;
-                } else {
-                    // Tasa manual expirada
-                    console.log("[SISTEMA] Tasa manual expirada, solicitando actualización");
-                    this._estado.config.tasaManual = false;
-                    localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
-                    
-                    // Mostrar advertencia
-                    this.mostrarAdvertenciaTasaExpirada();
-                }
-            }
-
-            // Si no hay tasa manual o está expirada, obtener de API (solo referencia)
-            const response = await this.fetchConTimeout(
-                'https://api.exchangerate-api.com/v4/latest/USD',
-                {},
-                CONFIG.TIMEOUTS.RED
-            );
-            
-            const data = await response.json();
-            
-            if (data.rates?.VES) {
-                this._estado.tasaBCV = data.rates.VES;
-                this._estado.config.tasaManual = false;
-                
-                // Guardar como referencia, pero NO como manual
-                localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA);
-                localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
-                localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
-                
-                console.log("[SISTEMA] Tasa de referencia cargada:", this._estado.tasaBCV);
-            } else {
-                throw new Error("No se pudo obtener tasa");
-            }
-        } catch (error) {
-            console.warn("[SISTEMA] Error cargando tasa, usando valor por defecto:", error.message);
-            this._estado.tasaBCV = 36.50;
-            this._estado.config.tasaManual = false;
-            localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA);
-            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
-            localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
-        }
-        
-        this.actualizarTasaUI();
-        this.actualizarBadgeTasaManual();
-        this.verificarBloqueoPorTasa();
-        this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: false });
-    },
-
-    // ======================================================
-    // NUEVOS MÉTODOS PARA GESTIÓN DE VIGENCIA DE TASA
-    // ======================================================
-
-    verificarVigenciaTasaManual() {
-        const timestamp = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
-        const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
-        
-        // Si no hay timestamp, pero hay tasa manual (compatibilidad hacia atrás)
-        if (!timestamp && tasaManualGuardada) {
-            // Crear timestamp retroactivo (considerar como recién configurada)
-            const nuevoTimestamp = Date.now() - (12 * 60 * 60 * 1000); // Asumir 12h atrás como precaución
-            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP, nuevoTimestamp.toString());
-            return this.verificarVigenciaTasaManual(); // Recursión controlada (solo una vez)
-        }
-        
-        if (!timestamp) {
-            return {
-                vigente: false,
-                motivo: 'sin_timestamp',
-                horasTranscurridas: 0,
-                horasRestantes: 0,
-                expiraEn: null
-            };
-        }
-        
-        const tiempoConfiguracion = parseInt(timestamp);
-        const tiempoActual = Date.now();
-        const tiempoTranscurrido = tiempoActual - tiempoConfiguracion;
-        
-        const horasTranscurridas = tiempoTranscurrido / (60 * 60 * 1000);
-        const horasRestantes = Math.max(0, (CONFIG.TASA_CONFIG.TASA_TTL - tiempoTranscurrido) / (60 * 60 * 1000));
-        
-        const vigente = tiempoTranscurrido < CONFIG.TASA_CONFIG.TASA_TTL;
-        
-        const estado = {
-            vigente,
-            horasTranscurridas: Math.round(horasTranscurridas * 10) / 10,
-            horasRestantes: Math.round(horasRestantes * 10) / 10,
-            timestamp,
-            tiempoConfiguracion: new Date(tiempoConfiguracion).toLocaleString(),
-            expiraEn: vigente ? new Date(tiempoConfiguracion + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString() : null,
-            expiradoEn: !vigente ? new Date(tiempoConfiguracion + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString() : null
-        };
-        
-        // Guardar en estado para uso en UI
-        this._estado.config.tasaVigencia = estado;
-        
-        return estado;
-    },
 
     tieneTasaManualActiva() {
-        if (!this._estado.config.tasaManual || this._estado.tasaBCV <= 0) return false;
-        
-        // Verificar vigencia
-        const vigencia = this.verificarVigenciaTasaManual();
-        return vigencia.vigente;
-    },
-
-    // En core.js - Modificar iniciarVerificadorVigenciaTasa
-
-    iniciarVerificadorVigenciaTasa() {
-        // Verificar cada 30 minutos
-        this._vigenciaInterval = setInterval(() => {
-            if (this._estado.config.tasaManual) {
-                const vigencia = this.verificarVigenciaTasaManual();
-
-                if (!vigencia.vigente) {
-                    // Tasa expiró durante la sesión
-                    console.log("[SISTEMA] Tasa manual expirada durante la sesión");
-                    this._estado.config.tasaManual = false;
-                    localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
-
-                    this.actualizarBadgeTasaManual();
-
-                    // NUEVO: Resetear el estado cerrado para que vuelva a aparecer
-                    const infoMessage = document.getElementById('infoMessage');
-                    if (infoMessage) {
-                        delete infoMessage.dataset.closed;
-                    }
-
-                    this.verificarBloqueoPorTasa();
-                    this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: false });
-                } else if (vigencia.horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS && vigencia.horasRestantes > 0) {
-                    // Advertir que está por expirar (solo una vez por sesión para no spamear)
-                    if (!this._advertenciaMostrada) {
-                        this.mostrarToast(`⚠️ Tu tasa manual expirará en ${vigencia.horasRestantes.toFixed(1)} horas.`, 'warning');
-                        this._advertenciaMostrada = true;
-
-                        // Resetear la bandera después de 1 hora
-                        setTimeout(() => {
-                            this._advertenciaMostrada = false;
-                        }, 60 * 60 * 1000);
-                    }
-                }
-
-                // Actualizar badge con horas restantes
-                this.actualizarBadgeTasaManual();
-            }
-        }, 30 * 60 * 1000); // Cada 30 minutos
+        return window.Configuracion?.tieneTasaManualActiva?.() || false;
     },
 
     verificarBloqueoPorTasa() {
         const tieneTasa = this.tieneTasaManualActiva();
         
-        // Botón de procesar venta
         const btnProcesar = document.getElementById('btnProcesarVenta');
         if (btnProcesar) {
             if (!tieneTasa) {
                 btnProcesar.disabled = true;
-                btnProcesar.title = this._estado.config.tasaManual ? 'Tasa manual expirada' : 'Debes configurar una tasa manual primero';
+                btnProcesar.title = window.Sistema.estado.config.tasaManual ? 'Tasa manual expirada' : 'Debes configurar una tasa manual primero';
                 btnProcesar.classList.add('opacity-50', 'cursor-not-allowed');
             } else {
                 btnProcesar.disabled = false;
@@ -946,12 +726,11 @@ const Sistema = {
             }
         }
         
-        // Botón de nuevo producto en inventario
         const btnNuevoProducto = document.querySelector('button[onclick="Inventario.mostrarModalProducto()"]');
         if (btnNuevoProducto) {
             if (!tieneTasa) {
                 btnNuevoProducto.disabled = true;
-                btnNuevoProducto.title = this._estado.config.tasaManual ? 'Tasa manual expirada' : 'Configura una tasa manual primero';
+                btnNuevoProducto.title = window.Sistema.estado.config.tasaManual ? 'Tasa manual expirada' : 'Configura una tasa manual primero';
                 btnNuevoProducto.classList.add('opacity-50', 'cursor-not-allowed');
             } else {
                 btnNuevoProducto.disabled = false;
@@ -960,185 +739,69 @@ const Sistema = {
             }
         }
         
-        // Actualizar mensaje informativo SOLO si no fue cerrado manualmente
         const infoMessage = document.getElementById('infoMessage');
         if (infoMessage && !infoMessage.dataset.closed) {
             this.actualizarMensajeTasa(tieneTasa);
         }
     },
 
-      actualizarMensajeTasa(tieneTasa) {
-      const infoMessage = document.getElementById('infoMessage');
-      if (!infoMessage) return;
-      
-      // Si ya tiene un mensaje personalizado y no es de tasa, respetarlo
-      if (infoMessage.dataset.custom && infoMessage.dataset.custom !== 'tasa') {
-          return;
-      }
-      
-      if (!tieneTasa) {
-          // Verificar si hay tasa expirada
-          const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
-          const tasaActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
-          
-          if (tasaManualGuardada && tasaActiva) {
-              const vigencia = this.verificarVigenciaTasaManual();
-              if (!vigencia.vigente) {
-                  // Tasa expirada
-                  infoMessage.innerHTML = `
-                      <i data-lucide="clock" class="text-red-600 w-5 h-5"></i>
-                      <p class="text-red-800 text-sm font-medium flex-1">
-                          <span class="font-bold">⏰ TASA EXPIRADA:</span> La tasa manual ha superado las 24h de vigencia.
-                      </p>
-                      <button onclick="Sistema.cerrarInfoMessage()" class="text-red-400 hover:text-red-600">
-                          <i data-lucide="x" class="w-4 h-4"></i>
-                      </button>
-                  `;
-                  infoMessage.className = 'mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3';
-                  infoMessage.dataset.custom = 'tasa';
-                  if (window.lucide) lucide.createIcons();
-                  return;
-              }
-          }
-          
-          // No hay tasa configurada
-          infoMessage.innerHTML = `
-              <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
-              <p class="text-amber-800 text-sm font-medium flex-1">
-                  <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
-              </p>
-              <button onclick="Sistema.cerrarInfoMessage()" class="text-amber-400 hover:text-amber-600">
-                  <i data-lucide="x" class="w-4 h-4"></i>
-              </button>
-          `;
-          infoMessage.className = 'mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl flex items-center gap-3';
-          infoMessage.dataset.custom = 'tasa';
-      } else {
-          // Hay tasa vigente, restaurar mensaje original (nota de productos)
-          infoMessage.innerHTML = `
-              <i data-lucide="info" class="text-blue-600 w-5 h-5"></i>
-              <p class="text-blue-800 text-sm font-medium flex-1">
-                  <span class="font-bold">Nota:</span> Si no visualizas los productos, presiona cualquier pestaña del menú superior para refrescar.
-              </p>
-              <button onclick="Sistema.cerrarInfoMessage()" class="text-blue-400 hover:text-blue-600">
-                  <i data-lucide="x" class="w-4 h-4"></i>
-              </button>
-          `;
-          infoMessage.className = 'mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-r-xl flex items-center gap-3';
-          delete infoMessage.dataset.custom;
-      }
-      
-      if (window.lucide) lucide.createIcons();
-    },
-
-    // ======================================================
-    // HORA DEL SERVIDOR (CON ABORTCONTROLLER)
-    // ======================================================
-
-    async actualizarHoraServidor() {
-        try {
-            const response = await this.fetchConTimeout(
-                'https://web-production-81e05.up.railway.app/hora-venezuela',
-                {},
-                CONFIG.TIMEOUTS.RED
-            );
-            
-            const data = await response.json();
-            
-            if (data.ok && data.iso) {
-                this._estado.config.serverTime = new Date(data.iso.replace('Z', ''));
-                this._estado.config.ultimaSincronizacion = Date.now();
-                this.iniciarRelojVisual(data.iso);
-            } else {
-                throw new Error("Respuesta inválida");
-            }
-        } catch (error) {
-            console.warn("[SISTEMA] Usando hora local:", error.message);
-            this._estado.config.serverTime = new Date();
-            this._estado.config.ultimaSincronizacion = Date.now();
-        }
-    },
-
-    iniciarRelojVisual(horaInicial) {
-        let tiempo = new Date(horaInicial.replace('Z', ''));
+    actualizarMensajeTasa(tieneTasa) {
+        const infoMessage = document.getElementById('infoMessage');
+        if (!infoMessage) return;
         
-        // Limpiar intervalo anterior si existe
-        if (this._intervaloReloj) {
-            clearInterval(this._intervaloReloj);
+        if (infoMessage.dataset.custom && infoMessage.dataset.custom !== 'tasa') {
+            return;
         }
         
-        this._intervaloReloj = setInterval(() => {
-            tiempo.setSeconds(tiempo.getSeconds() + 1);
+        if (!tieneTasa) {
+            const tasaManualGuardada = localStorage.getItem('sisov_tasa_manual');
+            const tasaActiva = localStorage.getItem('sisov_tasa_manual_activa') === 'true';
             
-            if (window.TimeModule) {
-                window.TimeModule.actualizarUI(tiempo);
-            } else {
-                this.actualizarRelojLocal(tiempo);
-            }
-        }, 1000);
-    },
-
-    actualizarRelojLocal(tiempo) {
-        const h = tiempo.getHours();
-        const m = String(tiempo.getMinutes()).padStart(2, '0');
-        const s = String(tiempo.getSeconds()).padStart(2, '0');
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const h12 = h % 12 || 12;
-        
-        document.getElementById('headerClock').textContent = `${h12}:${m}:${s}`;
-        document.getElementById('clockPeriod').textContent = ampm;
-        document.getElementById('headerDate').textContent = 
-            `${String(tiempo.getDate()).padStart(2, '0')}/${String(tiempo.getMonth() + 1).padStart(2, '0')}/${tiempo.getFullYear()}`;
-    },
-
-    actualizarTasaUI() {
-        const rateEl = document.getElementById('rateValue');
-        if (rateEl) {
-            rateEl.textContent = this._estado.tasaBCV.toFixed(2);
-        }
-    },
-
-    actualizarBadgeTasaManual() {
-        const tasaContainer = document.querySelector('.cursor-pointer[onclick="Sistema.mostrarModalTasa()"] .flex');
-        if (!tasaContainer) return;
-        
-        const badgeExistente = document.getElementById('manualRateBadge');
-        
-        if (this._estado.config.tasaManual) {
-            const vigencia = this.verificarVigenciaTasaManual();
-            
-            if (!badgeExistente) {
-                const badge = document.createElement('span');
-                badge.id = 'manualRateBadge';
-                
-                if (vigencia.vigente) {
-                    badge.className = 'ml-2 text-[8px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full uppercase';
-                    badge.textContent = `Manual · ${vigencia.horasRestantes?.toFixed(0) || '24'}h`;
-                    badge.title = `Tasa manual vigente por ${vigencia.horasRestantes?.toFixed(1)} horas · Expira: ${vigencia.expiraEn}`;
-                } else {
-                    badge.className = 'ml-2 text-[8px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full uppercase';
-                    badge.textContent = 'Manual · EXPIRADA';
-                    badge.title = 'Tasa manual expirada - debe actualizarse';
-                }
-                
-                tasaContainer.appendChild(badge);
-            } else {
-                // Actualizar badge existente
-                if (vigencia.vigente) {
-                    badgeExistente.textContent = `Manual · ${vigencia.horasRestantes?.toFixed(0) || '24'}h`;
-                    badgeExistente.className = 'ml-2 text-[8px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full uppercase';
-                    badgeExistente.title = `Tasa manual vigente por ${vigencia.horasRestantes?.toFixed(1)} horas · Expira: ${vigencia.expiraEn}`;
-                } else {
-                    badgeExistente.textContent = 'Manual · EXPIRADA';
-                    badgeExistente.className = 'ml-2 text-[8px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full uppercase';
-                    badgeExistente.title = 'Tasa manual expirada - debe actualizarse';
+            if (tasaManualGuardada && tasaActiva) {
+                const vigencia = window.Configuracion?.verificarVigenciaTasaManual?.();
+                if (vigencia && !vigencia.vigente) {
+                    infoMessage.innerHTML = `
+                        <i data-lucide="clock" class="text-red-600 w-5 h-5"></i>
+                        <p class="text-red-800 text-sm font-medium flex-1">
+                            <span class="font-bold">⏰ TASA EXPIRADA:</span> La tasa manual ha superado las 24h de vigencia.
+                        </p>
+                        <button onclick="Sistema.cerrarInfoMessage()" class="text-red-400 hover:text-red-600">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    `;
+                    infoMessage.className = 'mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3';
+                    infoMessage.dataset.custom = 'tasa';
+                    if (window.lucide) lucide.createIcons();
+                    return;
                 }
             }
+            
+            infoMessage.innerHTML = `
+                <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
+                <p class="text-amber-800 text-sm font-medium flex-1">
+                    <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
+                </p>
+                <button onclick="Sistema.cerrarInfoMessage()" class="text-amber-400 hover:text-amber-600">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            `;
+            infoMessage.className = 'mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl flex items-center gap-3';
+            infoMessage.dataset.custom = 'tasa';
         } else {
-            if (badgeExistente) {
-                badgeExistente.remove();
-            }
+            infoMessage.innerHTML = `
+                <i data-lucide="info" class="text-blue-600 w-5 h-5"></i>
+                <p class="text-blue-800 text-sm font-medium flex-1">
+                    <span class="font-bold">Nota:</span> Si no visualizas los productos, presiona cualquier pestaña del menú superior para refrescar.
+                </p>
+                <button onclick="Sistema.cerrarInfoMessage()" class="text-blue-400 hover:text-blue-600">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            `;
+            infoMessage.className = 'mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-r-xl flex items-center gap-3';
+            delete infoMessage.dataset.custom;
         }
+        
+        if (window.lucide) lucide.createIcons();
     },
 
     // ======================================================
@@ -1146,21 +809,18 @@ const Sistema = {
     // ======================================================
 
     cambiarTab(tabId) {
-        // Desactivar todos los tabs
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => {
             b.classList.remove('border-primary', 'text-primary');
             b.classList.add('border-transparent', 'text-slate-600');
         });
 
-        // Activar tab seleccionado
         const tab = document.getElementById(`tab${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
         if (tab) tab.classList.add('active');
 
         const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
         if (btn) btn.classList.add('border-primary', 'text-primary');
 
-        // Acciones específicas por tab
         switch(tabId) {
             case 'ventas':
                 if (window.Ventas) {
@@ -1185,7 +845,6 @@ const Sistema = {
         }
     },
 
-    // Utilidades
     formatearMoneda(monto, moneda = 'USD') {
         if (moneda === 'USD') {
             return new Intl.NumberFormat('en-US', {
@@ -1203,7 +862,6 @@ const Sistema = {
     },
 
     configurarEventosGlobales() {
-        // Login form
         document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -1221,7 +879,6 @@ const Sistema = {
             if (window.lucide) lucide.createIcons();
         });
         
-        // Búsqueda en productos
         const searchInput = document.getElementById('searchProducts');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -1231,7 +888,6 @@ const Sistema = {
             });
         }
 
-        // Escuchar cambios en la tasa para actualizar UI de ventas
         this.on(CONFIG.EVENTOS.TASA_ACTUALIZADA, () => {
             if (window.Ventas && document.getElementById('tabVentas')?.classList.contains('active')) {
                 window.Ventas.renderizarProductos();
@@ -1243,148 +899,11 @@ const Sistema = {
     activarVentasManual(elemento) {
         this.cambiarTab('ventas');
         elemento.classList.remove('tab-atencion');
-    },
-
-    // ======================================================
-    // MODALES DE TASA - VERSIÓN MEJORADA
-    // ======================================================
-
-    mostrarModalTasa() {
-        const modal = document.getElementById('modalTasa');
-        if (modal) {
-            // Actualizar el valor de referencia antes de mostrar
-            const referenciaElement = document.getElementById('referenciaRate');
-            if (referenciaElement) {
-                referenciaElement.textContent = this._estado.tasaBCV.toFixed(2);
-            }
-            
-            // Limpiar el campo de tasa manual
-            const inputManual = document.getElementById('tasaManualInput');
-            if (inputManual) {
-                inputManual.value = '';
-            }
-            
-            modal.classList.add('active');
-        }
-    },
-
-    cerrarModalTasa() {
-        document.getElementById('modalTasa')?.classList.remove('active');
-    },
-
-    async obtenerTasaReferencia() {
-        try {
-            // Mostrar indicador de carga en el botón
-            const btnActualizar = document.querySelector('button[onclick="Sistema.obtenerTasaReferencia()"]');
-            const textoOriginal = btnActualizar?.innerHTML;
-            if (btnActualizar) {
-                btnActualizar.innerHTML = '<i data-lucide="loader" class="w-3 h-3 inline mr-1 animate-spin"></i> Actualizando...';
-                btnActualizar.disabled = true;
-            }
-        
-            // Intentar cargar la nueva tasa (PERO NO SOBREESCRIBIR LA MANUAL)
-            const response = await this.fetchConTimeout(
-                'https://api.exchangerate-api.com/v4/latest/USD',
-                {},
-                CONFIG.TIMEOUTS.RED
-            );
-            
-            const data = await response.json();
-            let nuevaTasaReferencia;
-            
-            if (data.rates?.VES) {
-                nuevaTasaReferencia = data.rates.VES;
-            } else {
-                throw new Error("No se pudo obtener tasa");
-            }
-            
-            // ACTUALIZAR SOLO EL VALOR VISUAL EN EL MODAL
-            const referenciaElement = document.getElementById('referenciaRate');
-            if (referenciaElement) {
-                referenciaElement.textContent = nuevaTasaReferencia.toFixed(2);
-            }
-            
-            // IMPORTANTE: NO actualizar this._estado.tasaBCV si hay tasa manual
-            // Solo actualizar el header si NO hay tasa manual
-            if (!this._estado.config.tasaManual) {
-                this._estado.tasaBCV = nuevaTasaReferencia;
-                this.actualizarTasaUI();
-                this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: nuevaTasaReferencia, manual: false });
-            }
-            
-            this.mostrarToast('Tasa de referencia actualizada', 'success');
-            
-            // Restaurar el botón
-            if (btnActualizar) {
-                btnActualizar.innerHTML = textoOriginal;
-                btnActualizar.disabled = false;
-                if (window.lucide) lucide.createIcons();
-            }
-            
-        } catch (error) {
-            this.manejarError('actualizar_tasa_referencia', error);
-            this.mostrarToast('Error al actualizar tasa', 'error');
-            
-            // Restaurar el botón en caso de error
-            const btnActualizar = document.querySelector('button[onclick="Sistema.obtenerTasaReferencia()"]');
-            if (btnActualizar) {
-                btnActualizar.innerHTML = '<i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i> Actualizar';
-                btnActualizar.disabled = false;
-                if (window.lucide) lucide.createIcons();
-            }
-        }
-    },
-
-    guardarTasaManual() {
-        const input = document.getElementById('tasaManualInput');
-        const tasa = parseFloat(input?.value);
-        
-        if (tasa && tasa > 0) {
-            const timestamp = Date.now();
-            
-            // Guardar en estado
-            this._estado.tasaBCV = tasa;
-            this._estado.config.tasaManual = true;
-            
-            // Persistir en localStorage con timestamp
-            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA, tasa.toString());
-            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'true');
-            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP, timestamp.toString());
-            
-            // Actualizar vigencia
-            this.verificarVigenciaTasaManual();
-            
-            // Actualizar UI
-            this.actualizarTasaUI();
-            this.actualizarBadgeTasaManual();
-            this.cerrarModalTasa();
-            
-            // Verificar bloqueos (desbloqueará todo)
-            this.verificarBloqueoPorTasa();
-            
-            // Emitir evento de tasa actualizada
-            this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa, manual: true });
-            
-            // Forzar recálculo de precios en UI de ventas si está visible
-            if (window.Ventas && document.getElementById('tabVentas')?.classList.contains('active')) {
-                window.Ventas.renderizarProductos();
-                window.Ventas.actualizarCarritoUI();
-            }
-            
-            // Mostrar confirmación con información de vigencia
-            const fechaExpiracion = new Date(timestamp + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString();
-            this.mostrarToast(`✅ Tasa manual configurada por 24h. Expira: ${fechaExpiracion}`, 'success');
-
-            if (input) input.value = '';
-        } else {
-            this.mostrarToast('Ingrese una tasa válida', 'error');
-        }
     }
 };
 
 // Exponer globalmente
 window.Sistema = Sistema;
 
-// lineas de codigo antes de actualizar 1177
-// lineas de codigo despues de actualizar 1397
-// lineas de codigo integradas 220 20/02/2026
+// Líneas de código: 1430 (versión 3.4.4 - 21/02/2026)
+// Líneas de código: 909 (versión 3.5.4 - 21/02/2026) se tranfiere parte del codigo a time-module.js y cnfiguracion para mejorar la organización y delegar responsabilidades

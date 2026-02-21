@@ -1,6 +1,7 @@
 /**
  * @file time-module.js
  * @description Módulo de tiempo mejorado con fallback local
+ * @version 2.0 - Integrada lógica completa de tiempo
  */
 
 const TimeModule = {
@@ -8,6 +9,7 @@ const TimeModule = {
     dias: ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
     _intervalo: null,
     _horaActual: null,
+    _abortControllers: new Map(),
     
     async inicializar() {
         console.log("[TIME] Inicializando módulo de tiempo...");
@@ -26,7 +28,11 @@ const TimeModule = {
     
     async sincronizarConServidor() {
         try {
-            const response = await fetch('https://worldtimeapi.org/api/timezone/America/Caracas');
+            const response = await this.fetchConTimeout(
+                'https://worldtimeapi.org/api/timezone/America/Caracas',
+                {},
+                15000
+            );
             const data = await response.json();
             
             if (data.datetime) {
@@ -38,6 +44,39 @@ const TimeModule = {
             console.warn("[TIME] Error sincronizando con servidor:", error);
         }
         return false;
+    },
+
+    // FETCH CON TIMEOUT (copiado de core.js)
+    async fetchConTimeout(url, options = {}, timeout = 15000) {
+        const controller = new AbortController();
+        const id = `fetch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        this._abortControllers.set(id, controller);
+        
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            this._abortControllers.delete(id);
+        }, timeout);
+        
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            this._abortControllers.delete(id);
+            
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            this._abortControllers.delete(id);
+            
+            if (error.name === 'AbortError') {
+                throw new Error(`Timeout de ${timeout}ms excedido para ${url}`);
+            }
+            throw error;
+        }
     },
     
     iniciarReloj() {
@@ -122,6 +161,29 @@ const TimeModule = {
         };
         
         return tiempo.toLocaleDateString('es-VE', opciones);
+    },
+
+    // NUEVO: Método para sincronizar desde Sistema.inicializar()
+    async sincronizarHoraServidor() {
+        try {
+            const response = await this.fetchConTimeout(
+                'https://web-production-81e05.up.railway.app/hora-venezuela',
+                {},
+                15000
+            );
+            
+            const data = await response.json();
+            
+            if (data.ok && data.iso) {
+                this._horaActual = new Date(data.iso.replace('Z', ''));
+                console.log("[TIME] Hora sincronizada con Railway:", this._horaActual);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.warn("[TIME] Error sincronizando con Railway:", error);
+            return false;
+        }
     }
 };
 
