@@ -99,6 +99,11 @@ const Sistema = {
             if (this._estado.usuario) {
                 await this.cargarDatosIniciales();
             }
+
+            // Restaurar la última pestaña activa
+            if (window.Configuracion && window.Configuracion.restaurarPestanaActiva) {
+                window.Configuracion.restaurarPestanaActiva();
+            }
             
             operacion.completar();
             

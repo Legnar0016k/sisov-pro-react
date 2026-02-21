@@ -318,7 +318,7 @@ nav {
     }
 }
 
-/* boron parpadeante para descargar facturas*/
+/* botón parpadeante para descargar facturas*/
 @keyframes pulse-red-glow {
     0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); transform: scale(1); }
     50% { box-shadow: 0 0 0 15px rgba(220, 38, 38, 0); transform: scale(1.05); }
@@ -331,7 +331,7 @@ nav {
     border: 2px solid #fee2e2;
 }
 
-/* Animaciones para el splash screen */
+/* Animaciones para el splash screen ================================================================= */
 @keyframes pulse-slow {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.05); opacity: 0.9; }
@@ -353,4 +353,44 @@ nav {
 #splashScreen.hidden {
     opacity: 0;
     pointer-events: none;
+}
+
+/* Estilos para pestañas ================================================================= */
+.tab-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #4f46e5, #8b5cf6);
+    transition: all 0.3s ease;
+    transform: translateX(-50%);
+}
+
+.tab-btn.border-primary::after {
+    width: 100%;
+}
+
+.tab-btn:hover::after {
+    width: 60%;
+    opacity: 0.5;
+}
+
+/* Transición suave para iconos */
+.tab-btn svg {
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover svg {
+    transform: scale(1.1);
+}
+
+.tab-btn.border-primary svg {
+    color: #4f46e5;
 }

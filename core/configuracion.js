@@ -675,6 +675,102 @@ const Configuracion = {
         window.AuthSecurity?.copiarLicenciaAlPortapapeles();
     }
 };
+//final
+
+// ======================================================
+// GESTIÓN DE PESTAÑAS ACTIVAS (PERSISTENCIA VISUAL del nav)
+// ======================================================
+
+// Configuración de colores para pestañas
+const TAB_CONFIG = {
+    activeClass: 'border-primary text-primary bg-primary/5',
+    inactiveClass: 'border-transparent text-slate-600 hover:text-primary hover:bg-primary/5 hover:border-primary/30',
+    iconActiveClass: 'text-primary',
+    iconInactiveClass: 'text-slate-500'
+};
+
+/**
+ * Inicializa el sistema de pestañas con persistencia visual
+ * @param {string} tabId - ID de la pestaña a activar (ventas, inventario, reportes, configuracion)
+ */
+Configuracion.activarPestana = function(tabId) {
+    // Validar que el tabId sea válido
+    const tabsValidas = ['ventas', 'inventario', 'reportes', 'configuracion'];
+    if (!tabsValidas.includes(tabId)) {
+        console.warn(`[CONFIG] Pestaña "${tabId}" no válida`);
+        return;
+    }
+
+    // Remover clase activa de todas las pestañas
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove(
+            'border-primary', 
+            'text-primary', 
+            'bg-primary/5'
+        );
+        btn.classList.add(
+            'border-transparent', 
+            'text-slate-600'
+        );
+        
+        // Restaurar color de icono
+        const icon = btn.querySelector('svg');
+        if (icon) {
+            icon.classList.remove('text-primary');
+            icon.classList.add('text-slate-500');
+        }
+    });
+
+    // Activar la pestaña seleccionada
+    const pestanaActiva = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    if (pestanaActiva) {
+        pestanaActiva.classList.remove(
+            'border-transparent', 
+            'text-slate-600'
+        );
+        pestanaActiva.classList.add(
+            'border-primary', 
+            'text-primary',
+            'bg-primary/5'
+        );
+        
+        // Colorear icono de la pestaña activa
+        const iconoActivo = pestanaActiva.querySelector('svg');
+        if (iconoActivo) {
+            iconoActivo.classList.remove('text-slate-500');
+            iconoActivo.classList.add('text-primary');
+        }
+
+        // Guardar en localStorage para persistencia
+        localStorage.setItem('sisov_pestana_activa', tabId);
+        console.log(`[CONFIG] Pestaña activa: ${tabId}`);
+    }
+};
+
+/**
+ * Restaura la última pestaña activa desde localStorage
+ */
+Configuracion.restaurarPestanaActiva = function() {
+    const pestanaGuardada = localStorage.getItem('sisov_pestana_activa');
+    if (pestanaGuardada) {
+        this.activarPestana(pestanaGuardada);
+    } else {
+        // Por defecto, activar ventas si no hay guardada
+        this.activarPestana('ventas');
+    }
+};
+
+// Sobrescribir el método cambiarTab de Sistema para mantener sincronización
+if (window.Sistema) {
+    const originalCambiarTab = Sistema.cambiarTab;
+    Sistema.cambiarTab = function(tabId) {
+        // Llamar al método original
+        originalCambiarTab.call(this, tabId);
+        // Sincronizar con nuestro sistema de pestañas
+        Configuracion.activarPestana(tabId);
+    };
+}
+
 
 // Exponer globalmente
 window.Configuracion = Configuracion;

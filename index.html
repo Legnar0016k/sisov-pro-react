@@ -258,28 +258,53 @@
             <nav class="bg-white border-b border-slate-200 sticky top-[73px] sm:top-[64px] z-40 shadow-sm">
                 <div class="max-w-7xl mx-auto px-4">
                     <div class="flex overflow-x-auto scroll-thin">
-                       <button id="btnTabVentas"  onclick="Sistema.activarVentasManual(this)" 
-                            class="tab-btn tab-atencion flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 hover:text-primary transition-all border-primary text-primary" 
-                            data-tab="ventas">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shopping-cart" aria-hidden="true" class="lucide lucide-shopping-cart w-4 h-4 inline mr-2"><circle cx="8" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path></svg>
+                        <!-- Pestaña Ventas -->
+                        <button id="btnTabVentas" 
+                                onclick="Sistema.cambiarTab('ventas')" 
+                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 transition-all duration-200 hover:text-primary hover:bg-primary/5 hover:border-primary/30 text-slate-600 border-transparent" 
+                                data-tab="ventas">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart w-4 h-4 inline mr-2 text-slate-500">
+                                <circle cx="8" cy="21" r="1"></circle>
+                                <circle cx="19" cy="21" r="1"></circle>
+                                <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+                            </svg>
                             Ventas
                         </button>
+                        
+                        <!-- Pestaña Inventario -->
                         <button onclick="Sistema.cambiarTab('inventario')" 
-                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 border-transparent hover:text-primary transition-all"
+                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 transition-all duration-200 hover:text-primary hover:bg-primary/5 hover:border-primary/30 text-slate-600 border-transparent" 
                                 data-tab="inventario">
-                            <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package w-4 h-4 inline mr-2 text-slate-500">
+                                <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"></path>
+                                <path d="M12 22V12"></path>
+                                <polyline points="3.29 7 12 12 20.71 7"></polyline>
+                                <path d="m7.5 4.27 9 5.15"></path>
+                            </svg>
                             Inventario
                         </button>
+                        
+                        <!-- Pestaña Reportes -->
                         <button onclick="Sistema.cambiarTab('reportes')" 
-                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 border-transparent hover:text-primary transition-all"
+                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 transition-all duration-200 hover:text-primary hover:bg-primary/5 hover:border-primary/30 text-slate-600 border-transparent" 
                                 data-tab="reportes">
-                            <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-2"></i>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bar-chart-3 w-4 h-4 inline mr-2 text-slate-500">
+                                <path d="M3 3v16a2 2 0 0 0 2 2h16"></path>
+                                <path d="M18 17V9"></path>
+                                <path d="M13 17V5"></path>
+                                <path d="M8 17v-3"></path>
+                            </svg>
                             Reportes
                         </button>
+                        
+                        <!-- Pestaña Configuración -->
                         <button onclick="Sistema.cambiarTab('configuracion')" 
-                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 border-transparent hover:text-primary transition-all"
+                                class="tab-btn flex-shrink-0 px-4 py-3 text-sm font-semibold border-b-2 transition-all duration-200 hover:text-primary hover:bg-primary/5 hover:border-primary/30 text-slate-600 border-transparent" 
                                 data-tab="configuracion">
-                            <i data-lucide="settings" class="w-4 h-4 inline mr-2"></i>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings w-4 h-4 inline mr-2 text-slate-500">
+                                <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
                             Configuración
                         </button>
                     </div>

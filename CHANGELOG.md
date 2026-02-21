@@ -531,3 +531,27 @@ Archivo	Estado	Cambios:
 **reportes.js	        ✅ Sin cambios**	-
 **time-module.js	    ✅ Versión 2.0	Tod**
 **ventas.js	            ✅ Sin cambios	-**
+
+
+## Cambios realizados: 20/02/2026 =====================================================================
+Elemento	            Cambio
+Transiciones	        Añadido duration-200 para suavizar los cambios
+Hover background	    hover:bg-primary/5 - fondo muy sutil al pasar el mouse
+Hover border	        hover:border-primary/30 - borde semitransparente en hover
+Iconos	                transition-transform duration-200 group-hover:scale-110 - los iconos crecen ligeramente al hacer hover  
+Clases activas	        Se mantienen border-primary text-primary para la pestaña activa
+
+Efectos visuales:
+
+Pestaña activa:     Borde azul primario y texto azul (como antes)
+
+Hover sobre cualquier pestaña:
+
+Fondo azul muy suave (5% de opacidad)
+
+Borde azul semitransparente
+
+Texto azul
+
+Icono crece ligeramente
+## ======================================================================================================
