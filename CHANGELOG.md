@@ -555,3 +555,25 @@ Texto azul
 
 Icono crece ligeramente
 ## ======================================================================================================
+
+## Resumen de cambios:
+
+**Archivo	Cambios**
+configuracion.js	Añadidas funciones activarPestana() y restaurarPestanaActiva()
+core.js	            Añadida llamada a restaurarPestanaActiva() en inicializar()
+index.html	        Actualizados botones con data-tab y clases de iconos
+styles.css	        Estilos adicionales opcionales
+
+Características:
+
+✅ Persistencia visual - La pestaña activa se ilumina en morado (color primary)
+
+✅ Persistencia entre recargas - Se guarda en localStorage
+
+✅ Hover suave - Mantiene los efectos hover que te gustaron
+
+✅ Iconos coloreados - Los iconos también cambian de color
+
+✅ Sin romper nada - Respeta la lógica existente de Sistema.cambiarTab()
+
+¡Ahora los usuarios siempre sabrán en qué pestaña están! 🎯
