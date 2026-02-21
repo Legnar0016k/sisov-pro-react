@@ -662,56 +662,107 @@
     </div>
 </div>
 
-<!--==================================================================================================0-->
             </main>
         </div>
     </div>
-    
-    <!-- Modales -->
+<!--==================================================================================================0-->   
+    <!-- Modal Tasa (VERSIÓN MODIFICADA) -->
     <div id="modalTasa" class="modal-backdrop">
         <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4">
             <div class="p-6 border-b border-slate-200">
-                <h3 class="text-lg font-bold text-slate-800">Configurar Tasa BCV</h3>
+                <h3 class="text-lg font-bold text-slate-800">Configurar Tasa de Cambio</h3>
             </div>
             <div class="p-6">
                 <div class="space-y-4">
+
+                    <!-- NUEVO: DESCARGO DE RESPONSABILIDAD DESTACADO -->
+                    <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg text-sm">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="info" class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="space-y-1">
+                                <p class="font-bold text-amber-800">Aviso importante</p>
+                                <p class="text-amber-700">
+                                    La tasa que se muestra a continuación es una <span class="font-semibold">referencia automática</span>.
+                                    Es tu responsabilidad verificar y establecer la tasa de cambio del día para tus transacciones.
+                                </p>
+                                <!-- NUEVO: ENLACE AL BCV -->
+                                <p class="text-amber-700 mt-2">
+                                    Consulta la tasa oficial en:
+                                    <a href="https://www.bcv.org.ve/"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="font-bold text-amber-800 underline hover:text-amber-900 inline-flex items-center gap-1">
+                                        bcv.org.ve
+                                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bloque de Tasa de Referencia (ahora claramente etiquetado) -->
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-2">Tasa Actual de Referencia</label>
-                        <div class="bg-emerald-50 p-4 rounded-lg mb-4">
+                        <label class="block text-sm font-semibold text-slate-700 mb-2">
+                            <span class="flex items-center gap-1">
+                                <i data-lucide="eye" class="w-4 h-4 text-slate-400"></i>
+                                Tasa de Referencia (desde API)
+                            </span>
+                        </label>
+                        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
                             <div class="flex items-center justify-between">
-                                <span class="text-2xl font-bold text-emerald-700" id="referenciaRate">--.--</span>
-                                <button onclick="Sistema.obtenerTasaReferencia()" 
-                                        class="text-sm text-emerald-600 hover:text-emerald-800">
+                                <span class="text-2xl font-bold text-primary" id="referenciaRate">--.--</span>
+                                <button onclick="Sistema.obtenerTasaReferencia()"
+                                        class="text-xs px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 font-semibold transition-colors"
+                                        title="Actualizar tasa de referencia">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i>
                                     Actualizar
                                 </button>
                             </div>
-                            <p class="text-xs text-emerald-600 mt-1">Fuente: DolarAPI</p>
+                            <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                <i data-lucide="alert-circle" class="w-3 h-3"></i>
+                                Solo como referencia. No afecta la tasa manual.
+                            </p>
                         </div>
                     </div>
-                    
+
+                    <!-- Bloque de Tasa Manual (el que los usuarios usarán) -->
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-2">Tasa Manual</label>
-                        <input type="number" 
-                               step="0.01" 
-                               id="tasaManualInput" 
-                               placeholder="Ingrese tasa manual"
-                               class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-primary outline-none">
+                        <label class="block text-sm font-semibold text-slate-700 mb-2">
+                            <span class="flex items-center gap-1">
+                                <i data-lucide="pencil" class="w-4 h-4 text-slate-400"></i>
+                                Tasa Manual (La que usará el sistema)
+                            </span>
+                        </label>
+                        <div class="relative">
+                            <input type="number"
+                                   step="0.01"
+                                   id="tasaManualInput"
+                                   placeholder="Ej: 36.50"
+                                   class="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-primary outline-none text-lg font-bold">
+                            <span class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">Bs/$</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">
+                            Este será el valor utilizado para calcular los precios en Bs.
+                        </p>
                     </div>
-                    
-                    <div class="flex gap-3 pt-4">
-                        <button onclick="Sistema.cerrarModalTasa()" 
+
+                    <!-- Botones de acción -->
+                    <div class="flex gap-3 pt-4 border-t border-slate-200">
+                        <button onclick="Sistema.cerrarModalTasa()"
                                 class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-colors">
                             Cancelar
                         </button>
-                        <button onclick="Sistema.guardarTasaManual()" 
+                        <button onclick="Sistema.guardarTasaManual()"
                                 class="flex-1 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary-dark transition-colors">
-                            Guardar Tasa
+                            Usar Tasa Manual
                         </button>
                     </div>
+
                 </div>
             </div>
         </div>
     </div>
+    
     
     <!-- Modal Producto -->
     <div id="modalProducto" class="modal-backdrop">

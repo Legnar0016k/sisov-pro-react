@@ -465,3 +465,55 @@ Sin bucles ni saturación
 - Panel maestro: asignación de licencias funciona correctamente liberando las anteriores
 - Auth-security: verificación de expiración mantiene estados correctamente
 - Sistema estable y funcional
+
+
+## [3.6.2] - 20/02/2026
+**Resumen de los cambios realizados:**
+Persistencia de tasa manual: Se guarda en localStorage y se restaura al recargar
+
+*Tasa de referencia puramente visual: Ya no afecta los cálculos del inventario*
+**
+*Bloqueo completo: Si no hay tasa manual configurada:*
+**
+*Botón "Procesar Venta" deshabilitado*
+**
+*Botones "Agregar" en productos deshabilitados*
+**
+*Botón "Nuevo Producto" en inventario deshabilitado*
+**
+*Mensaje de advertencia visible en la interfaz*
+**
+*Badge "Manual": Aparece en el header cuando se usa tasa manual*
+**
+*Evento de tasa actualizada: Para refrescar la UI cuando cambia la tasa*
+**
+*Validación en ventas: Se verifica antes de procesar cualquier venta*
+
+*La valides de la tasa manual sera de 24 hora luego de eso se emitira un alerta de volver a ingresar la tasa manual*
+
+El sistema ahora obliga al usuario a configurar una tasa manual antes de poder operar, y esa tasa persiste entre recargas de página. La tasa de referencia queda como un simple indicador visual sin efecto en las operaciones.
+
+
+## [3.7.0] - 20/02/2026
+Resumen de la solución implementada:
+Característica	Descripción
+Vigencia de 24h	La tasa manual expira después de 24 horas
+Timestamp de configuración	Se guarda cuándo se configuró la tasa
+Advertencia temprana	Avisa 2 horas antes de expirar
+Badge con horas restantes	Muestra en el header cuántas horas quedan
+Mensaje de expiración	Si expiró, muestra advertencia y pide actualizar
+Tasa de referencia como fallback	Si expiró, muestra la tasa actual de la API como referencia
+No bloqueo total	El usuario puede seguir viendo productos, pero no procesar ventas hasta actualizar
+
+## Beneficios:
+**Usabilidad: El usuario ve claramente cuánto tiempo le queda de vigencia**
+**
+**Precisión: Las ventas siempre se calculan con tasas recientes (máx 24h)**
+**
+**Automatización con control: El sistema recuerda la última tasa pero pide confirmación**
+**
+**Transparencia: El usuario sabe exactamente cuándo expirará su configuración**
+**
+**Responsabilidad compartida: Tú provees la herramienta, el usuario la mantiene actualizada**
+
+modificar el tiempo de vigencia en **TASA_TTL** (ej: 12h, 48h, semanal)

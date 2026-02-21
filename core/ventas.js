@@ -1,7 +1,7 @@
 /**
  * @file ventas.js
  * @description Módulo de ventas con reserva de stock y manejo de concurrencia.
- * [REFACTOR] Depende de AuthSecurity para verificar licencia.
+ * [REFACTOR] Depende de AuthSecurity para verificar licencia y de Sistema para tasa manual.
  */
 
 const Ventas = {
@@ -170,20 +170,44 @@ const Ventas = {
     },
     
     // ======================================================
-    // PROCESAMIENTO DE VENTA
+    // PROCESAMIENTO DE VENTA - VERSIÓN MODIFICADA
     // ======================================================
     
     async procesarVenta() {
-        if (this._procesandoVenta) { window.Sistema.mostrarToast('Ya hay una venta en proceso', 'warning'); return; }
-        if (this.carrito.length === 0) { window.Sistema.mostrarToast('El carrito está vacío', 'error'); return; }
+        if (this._procesandoVenta) { 
+            window.Sistema.mostrarToast('Ya hay una venta en proceso', 'warning'); 
+            return; 
+        }
+        
+        if (this.carrito.length === 0) { 
+            window.Sistema.mostrarToast('El carrito está vacío', 'error'); 
+            return; 
+        }
 
-        // [REFACTOR] Verificar licencia activa desde AuthSecurity
+        // Verificar licencia activa desde AuthSecurity
         if (!window.AuthSecurity?.licenciaEsActiva) {
             window.Sistema.mostrarToast('Licencia no activa', 'error');
             return;
         }
 
-        const confirmacion = await Swal.fire({ title: 'Confirmar Venta', html: this.generarResumenVenta(), icon: 'question', showCancelButton: true, confirmButtonText: 'Procesar Venta', cancelButtonText: 'Cancelar', confirmButtonColor: '#4f46e5', width: 500 });
+        // NUEVO: Verificar tasa manual
+        if (!window.Sistema.tieneTasaManualActiva()) {
+            window.Sistema.mostrarToast('Debes configurar una tasa manual primero', 'error');
+            window.Sistema.mostrarModalTasa(); // Abrir modal para que configure
+            return;
+        }
+
+        const confirmacion = await Swal.fire({ 
+            title: 'Confirmar Venta', 
+            html: this.generarResumenVenta(), 
+            icon: 'question', 
+            showCancelButton: true, 
+            confirmButtonText: 'Procesar Venta', 
+            cancelButtonText: 'Cancelar', 
+            confirmButtonColor: '#4f46e5', 
+            width: 500 
+        });
+        
         if (!confirmacion.isConfirmed) return;
 
         this._procesandoVenta = true;
@@ -348,6 +372,10 @@ const Ventas = {
         // Calcular precio en Bs
         const precioBs = producto.price_usd * (window.Sistema.estado.tasaBCV || 0);
         
+        // Verificar si hay tasa manual para habilitar/deshabilitar botón
+        const tieneTasaManual = window.Sistema.tieneTasaManualActiva?.() || false;
+        const botonHabilitado = producto.stock > 0 && tieneTasaManual;
+        
         div.innerHTML = `
             <div class="mb-3">
                 <span class="text-xs font-semibold text-slate-500">${producto.category || 'General'}</span>
@@ -363,7 +391,13 @@ const Ventas = {
                 </div>
                 <span class="badge ${stockClass}" title="Stock actual: ${producto.stock} unidades">${producto.stock} uds.</span>
             </div>
-            <button onclick="Ventas.agregarAlCarrito('${producto.id}')" ${producto.stock <= 0 ? 'disabled' : ''} class="w-full btn-primary py-2 rounded-lg text-white font-semibold ${producto.stock <= 0 ? 'opacity-50 cursor-not-allowed' : ''}"><i data-lucide="shopping-cart" class="w-4 h-4 inline mr-2"></i>${producto.stock > 0 ? 'Agregar' : 'Sin Stock'}</button>
+            <button onclick="Ventas.agregarAlCarrito('${producto.id}')" 
+                    ${!botonHabilitado ? 'disabled' : ''} 
+                    class="w-full btn-primary py-2 rounded-lg text-white font-semibold ${!botonHabilitado ? 'opacity-50 cursor-not-allowed' : ''}"
+                    ${!tieneTasaManual ? 'title="Configura una tasa manual primero"' : producto.stock <= 0 ? 'title="Producto sin stock"' : ''}>
+                <i data-lucide="shopping-cart" class="w-4 h-4 inline mr-2"></i>
+                ${producto.stock > 0 ? (tieneTasaManual ? 'Agregar' : 'Sin Tasa') : 'Sin Stock'}
+            </button>
         `;
         return div;
     },
@@ -385,9 +419,19 @@ const Ventas = {
         subtotalElement.textContent = window.Sistema.formatearMoneda(subtotalUSD);
         totalElement.textContent = window.Sistema.formatearMoneda(totalVES, 'VES');
         
-        // [REFACTOR] Usar AuthSecurity.licenciaEsActiva
+        // Verificar tasa manual y licencia
         const licenciaActiva = window.AuthSecurity?.licenciaEsActiva || false;
-        procesarBtn.disabled = this.carrito.length === 0 || !licenciaActiva || this._procesandoVenta;
+        const tieneTasaManual = window.Sistema.tieneTasaManualActiva?.() || false;
+        
+        procesarBtn.disabled = this.carrito.length === 0 || !licenciaActiva || this._procesandoVenta || !tieneTasaManual;
+        
+        if (!tieneTasaManual && this.carrito.length > 0) {
+            procesarBtn.title = 'Configura una tasa manual primero';
+        } else if (!licenciaActiva) {
+            procesarBtn.title = 'Licencia no activa';
+        } else {
+            procesarBtn.title = '';
+        }
         
         if (this.carrito.length === 0) {
             container.innerHTML = `<div class="text-center py-8 text-slate-400"><i data-lucide="shopping-cart" class="w-12 h-12 mx-auto mb-3 opacity-30"></i><p class="text-sm font-medium">Carrito vacío</p></div>`;

@@ -1,6 +1,7 @@
 /**
  * @file core.js
  * @description Núcleo del sistema con estado transaccional y manejo robusto de errores
+ * @version 3.5.3 - Tasa manual con TTL de 24h y gestión de vigencia
  */
 
 // ======================================================
@@ -8,7 +9,7 @@
 // ======================================================
 
 const CONFIG = {
-    VERSION: "3.5.1",
+    VERSION: "3.5.3",
     TIMEOUTS: {
         OPERACION: 10000,
         RED: 15000,
@@ -18,13 +19,21 @@ const CONFIG = {
         TOKEN: 'sisov_token',
         USER: 'sisov_user',
         CARRITO: 'sisov_carrito',
-        TASA: 'sisov_tasa_manual'
+        TASA: 'sisov_tasa_manual',
+        TASA_MANUAL_ACTIVA: 'sisov_tasa_manual_activa',
+        TASA_TIMESTAMP: 'sisov_tasa_timestamp'
+    },
+    TASA_CONFIG: {
+        TASA_TTL: 24 * 60 * 60 * 1000, // 24 horas en milisegundos
+        TASA_WARNING_HOURS: 2, // Advertir 2 horas antes de expirar
+        TASA_EXPIRADA_HOURS: 24
     },
     EVENTOS: {
         STOCK_ACTUALIZADO: 'sisov:stockUpdated',
         CARRITO_CAMBIADO: 'sisov:cartChanged',
         VENTA_COMPLETADA: 'sisov:saleCompleted',
-        ERROR: 'sisov:error'
+        ERROR: 'sisov:error',
+        TASA_ACTUALIZADA: 'sisov:tasaUpdated'
     }
 };
 
@@ -46,7 +55,8 @@ const Sistema = {
         config: {
             tasaManual: false,
             serverTime: null,
-            ultimaSincronizacion: null
+            ultimaSincronizacion: null,
+            tasaVigencia: null // Guardar info de vigencia
         },
         transacciones: new Map(), // Para operaciones atómicas
         listeners: new Map() // Para eventos
@@ -77,7 +87,7 @@ const Sistema = {
             // 1. Sincronizar hora del servidor
             await this.actualizarHoraServidor();
             
-            // 2. Cargar tasa BCV
+            // 2. Cargar tasa BCV (con restauración de manual y verificación TTL)
             await this.cargarTasaBCV();
             
             // 3. Restaurar sesión si existe
@@ -89,7 +99,10 @@ const Sistema = {
             // 5. Iniciar heartbeat de seguridad
             this.iniciarHeartbeat();
             
-            // 6. Si hay usuario, cargar datos iniciales
+            // 6. Iniciar verificador periódico de vigencia de tasa
+            this.iniciarVerificadorVigenciaTasa();
+            
+            // 7. Si hay usuario, cargar datos iniciales
             if (this._estado.usuario) {
                 await this.cargarDatosIniciales();
             }
@@ -658,6 +671,9 @@ const Sistema = {
                 await window.AuthSecurity.cargarLicenciaUsuario();
             }
 
+            // Verificar tasa manual y bloquear si es necesario
+            this.verificarBloqueoPorTasa();
+
         } catch (error) {
             this.manejarError('carga_datos_iniciales', error, false);
         }
@@ -713,11 +729,52 @@ const Sistema = {
     },
 
     // ======================================================
-    // TASA BCV (CON ABORTCONTROLLER)
+    // TASA BCV - VERSIÓN CON TTL Y VIGENCIA
     // ======================================================
 
     async cargarTasaBCV() {
         try {
+            // PRIMERO: Verificar si hay tasa manual guardada
+            const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
+            const tasaManualActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
+            const tasaTimestamp = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
+            
+            if (tasaManualGuardada && tasaManualActiva && tasaTimestamp) {
+                // Verificar vigencia
+                const vigencia = this.verificarVigenciaTasaManual();
+                
+                if (vigencia.vigente) {
+                    // Restaurar tasa manual vigente
+                    this._estado.tasaBCV = parseFloat(tasaManualGuardada);
+                    this._estado.config.tasaManual = true;
+                    this._estado.config.tasaVigencia = vigencia;
+                    
+                    console.log("[SISTEMA] Tasa manual restaurada (vigente):", this._estado.tasaBCV);
+                    console.log(`[SISTEMA] Vigencia: ${vigencia.horasTranscurridas}h transcurridas, ${vigencia.horasRestantes}h restantes`);
+                    
+                    this.actualizarTasaUI();
+                    this.actualizarBadgeTasaManual();
+                    this.verificarBloqueoPorTasa();
+                    this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: true, vigencia });
+                    
+                    // Advertir si está por expirar
+                    if (vigencia.horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS && vigencia.horasRestantes > 0) {
+                        this.mostrarToast(`⚠️ Tu tasa manual expirará en ${vigencia.horasRestantes.toFixed(1)} horas. Considera actualizarla.`, 'warning');
+                    }
+                    
+                    return;
+                } else {
+                    // Tasa manual expirada
+                    console.log("[SISTEMA] Tasa manual expirada, solicitando actualización");
+                    this._estado.config.tasaManual = false;
+                    localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
+                    
+                    // Mostrar advertencia
+                    this.mostrarAdvertenciaTasaExpirada();
+                }
+            }
+
+            // Si no hay tasa manual o está expirada, obtener de API (solo referencia)
             const response = await this.fetchConTimeout(
                 'https://api.exchangerate-api.com/v4/latest/USD',
                 {},
@@ -728,15 +785,258 @@ const Sistema = {
             
             if (data.rates?.VES) {
                 this._estado.tasaBCV = data.rates.VES;
+                this._estado.config.tasaManual = false;
+                
+                // Guardar como referencia, pero NO como manual
+                localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA);
+                localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
+                localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
+                
+                console.log("[SISTEMA] Tasa de referencia cargada:", this._estado.tasaBCV);
             } else {
                 throw new Error("No se pudo obtener tasa");
             }
         } catch (error) {
             console.warn("[SISTEMA] Error cargando tasa, usando valor por defecto:", error.message);
             this._estado.tasaBCV = 36.50;
+            this._estado.config.tasaManual = false;
+            localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA);
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
+            localStorage.removeItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
         }
         
         this.actualizarTasaUI();
+        this.actualizarBadgeTasaManual();
+        this.verificarBloqueoPorTasa();
+        this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: false });
+    },
+
+    // ======================================================
+    // NUEVOS MÉTODOS PARA GESTIÓN DE VIGENCIA DE TASA
+    // ======================================================
+
+    verificarVigenciaTasaManual() {
+        const timestamp = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP);
+        const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
+        
+        // Si no hay timestamp, pero hay tasa manual (compatibilidad hacia atrás)
+        if (!timestamp && tasaManualGuardada) {
+            // Crear timestamp retroactivo (considerar como recién configurada)
+            const nuevoTimestamp = Date.now() - (12 * 60 * 60 * 1000); // Asumir 12h atrás como precaución
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP, nuevoTimestamp.toString());
+            return this.verificarVigenciaTasaManual(); // Recursión controlada (solo una vez)
+        }
+        
+        if (!timestamp) {
+            return {
+                vigente: false,
+                motivo: 'sin_timestamp',
+                horasTranscurridas: 0,
+                horasRestantes: 0,
+                expiraEn: null
+            };
+        }
+        
+        const tiempoConfiguracion = parseInt(timestamp);
+        const tiempoActual = Date.now();
+        const tiempoTranscurrido = tiempoActual - tiempoConfiguracion;
+        
+        const horasTranscurridas = tiempoTranscurrido / (60 * 60 * 1000);
+        const horasRestantes = Math.max(0, (CONFIG.TASA_CONFIG.TASA_TTL - tiempoTranscurrido) / (60 * 60 * 1000));
+        
+        const vigente = tiempoTranscurrido < CONFIG.TASA_CONFIG.TASA_TTL;
+        
+        const estado = {
+            vigente,
+            horasTranscurridas: Math.round(horasTranscurridas * 10) / 10,
+            horasRestantes: Math.round(horasRestantes * 10) / 10,
+            timestamp,
+            tiempoConfiguracion: new Date(tiempoConfiguracion).toLocaleString(),
+            expiraEn: vigente ? new Date(tiempoConfiguracion + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString() : null,
+            expiradoEn: !vigente ? new Date(tiempoConfiguracion + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString() : null
+        };
+        
+        // Guardar en estado para uso en UI
+        this._estado.config.tasaVigencia = estado;
+        
+        return estado;
+    },
+
+    tieneTasaManualActiva() {
+        if (!this._estado.config.tasaManual || this._estado.tasaBCV <= 0) return false;
+        
+        // Verificar vigencia
+        const vigencia = this.verificarVigenciaTasaManual();
+        return vigencia.vigente;
+    },
+
+    iniciarVerificadorVigenciaTasa() {
+        // Verificar cada 30 minutos
+        this._vigenciaInterval = setInterval(() => {
+            if (this._estado.config.tasaManual) {
+                const vigencia = this.verificarVigenciaTasaManual();
+                
+                if (!vigencia.vigente) {
+                    // Tasa expiró durante la sesión
+                    console.log("[SISTEMA] Tasa manual expirada durante la sesión");
+                    this._estado.config.tasaManual = false;
+                    localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'false');
+                    
+                    this.actualizarBadgeTasaManual();
+                    this.verificarBloqueoPorTasa();
+                    this.mostrarAdvertenciaTasaExpirada();
+                    this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: this._estado.tasaBCV, manual: false });
+                } else if (vigencia.horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS && vigencia.horasRestantes > 0) {
+                    // Advertir que está por expirar (solo una vez por sesión para no spamear)
+                    if (!this._advertenciaMostrada) {
+                        this.mostrarToast(`⚠️ Tu tasa manual expirará en ${vigencia.horasRestantes.toFixed(1)} horas.`, 'warning');
+                        this._advertenciaMostrada = true;
+                        
+                        // Resetear la bandera después de 1 hora
+                        setTimeout(() => {
+                            this._advertenciaMostrada = false;
+                        }, 60 * 60 * 1000);
+                    }
+                }
+                
+                // Actualizar badge con horas restantes
+                this.actualizarBadgeTasaManual();
+            }
+        }, 30 * 60 * 1000); // Cada 30 minutos
+    },
+
+    mostrarAdvertenciaTasaExpirada() {
+        const infoMessage = document.getElementById('infoMessage');
+        if (!infoMessage) return;
+        
+        const vigencia = this.verificarVigenciaTasaManual();
+        const fechaExpiracion = vigencia.expiradoEn || 'desconocida';
+        
+        infoMessage.innerHTML = `
+            <i data-lucide="clock" class="text-red-600 w-5 h-5"></i>
+            <div class="flex-1">
+                <p class="text-red-800 text-sm font-medium">
+                    <span class="font-bold">⏰ TASA MANUAL EXPIRADA:</span> La tasa configurada superó las 24h de vigencia.
+                </p>
+                <p class="text-red-700 text-xs mt-1">
+                    Expiró el ${fechaExpiracion}. Por favor, verifica la tasa del día y configúrala nuevamente.
+                </p>
+            </div>
+            <button onclick="Sistema.mostrarModalTasa()" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-600 transition-colors ml-auto">
+                Configurar Nueva Tasa
+            </button>
+        `;
+        infoMessage.className = 'mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3';
+        
+        if (window.lucide) lucide.createIcons();
+    },
+
+    verificarBloqueoPorTasa() {
+        const tieneTasa = this.tieneTasaManualActiva();
+        
+        // Botón de procesar venta
+        const btnProcesar = document.getElementById('btnProcesarVenta');
+        if (btnProcesar) {
+            if (!tieneTasa) {
+                btnProcesar.disabled = true;
+                btnProcesar.title = this._estado.config.tasaManual ? 'Tasa manual expirada' : 'Debes configurar una tasa manual primero';
+                btnProcesar.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnProcesar.disabled = false;
+                btnProcesar.title = '';
+                btnProcesar.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
+        // Botón de nuevo producto en inventario
+        const btnNuevoProducto = document.querySelector('button[onclick="Inventario.mostrarModalProducto()"]');
+        if (btnNuevoProducto) {
+            if (!tieneTasa) {
+                btnNuevoProducto.disabled = true;
+                btnNuevoProducto.title = this._estado.config.tasaManual ? 'Tasa manual expirada' : 'Configura una tasa manual primero';
+                btnNuevoProducto.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                btnNuevoProducto.disabled = false;
+                btnNuevoProducto.title = '';
+                btnNuevoProducto.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
+        // Actualizar mensaje informativo
+        this.actualizarMensajeTasa(tieneTasa);
+    },
+
+    actualizarMensajeTasa(tieneTasa) {
+        const infoMessage = document.getElementById('infoMessage');
+        if (!infoMessage) return;
+        
+        if (!tieneTasa) {
+            // Verificar si hay tasa expirada
+            const tasaManualGuardada = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA);
+            const tasaActiva = localStorage.getItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA) === 'true';
+            
+            if (tasaManualGuardada && tasaActiva) {
+                // Hay tasa pero expiró
+                const vigencia = this.verificarVigenciaTasaManual();
+                if (!vigencia.vigente) {
+                    this.mostrarAdvertenciaTasaExpirada();
+                    return;
+                }
+            }
+            
+            // No hay tasa configurada
+            infoMessage.innerHTML = `
+                <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
+                <div class="flex-1">
+                    <p class="text-amber-800 text-sm font-medium">
+                        <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
+                    </p>
+                    <p class="text-amber-700 text-xs mt-1">
+                        La tasa tendrá una vigencia de 24 horas. Después de ese periodo, deberás actualizarla.
+                    </p>
+                </div>
+                <button onclick="Sistema.mostrarModalTasa()" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-amber-600 transition-colors ml-auto">
+                    Configurar Tasa
+                </button>
+            `;
+            infoMessage.className = 'mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-xl flex items-center gap-3';
+        } else {
+            // Hay tasa vigente, mostrar información
+            const vigencia = this.verificarVigenciaTasaManual();
+            const expiraEn = vigencia.expiraEn || 'N/A';
+            const horasRestantes = vigencia.horasRestantes || 24;
+            
+            // Determinar color según tiempo restante
+            let bgColor = 'bg-green-50';
+            let borderColor = 'border-green-500';
+            let textColor = 'text-green-800';
+            let iconColor = 'text-green-600';
+            
+            if (horasRestantes <= CONFIG.TASA_CONFIG.TASA_WARNING_HOURS) {
+                bgColor = 'bg-amber-50';
+                borderColor = 'border-amber-500';
+                textColor = 'text-amber-800';
+                iconColor = 'text-amber-600';
+            }
+            
+            infoMessage.innerHTML = `
+                <i data-lucide="check-circle" class="${iconColor} w-5 h-5"></i>
+                <div class="flex-1">
+                    <p class="${textColor} text-sm font-medium">
+                        <span class="font-bold">✅ TASA MANUAL ACTIVA:</span> ${this._estado.tasaBCV.toFixed(2)} Bs/$
+                    </p>
+                    <p class="${textColor.replace('800', '700')} text-xs mt-1">
+                        ⏱️ Vigente hasta: ${expiraEn} • ${horasRestantes}h restantes
+                    </p>
+                </div>
+                <button onclick="Sistema.mostrarModalTasa()" class="bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors ml-auto">
+                    Actualizar Tasa
+                </button>
+            `;
+            infoMessage.className = `mb-6 p-4 ${bgColor} border-l-4 ${borderColor} rounded-r-xl flex items-center gap-3`;
+        }
+        
+        if (window.lucide) lucide.createIcons();
     },
 
     // ======================================================
@@ -806,6 +1106,49 @@ const Sistema = {
         }
     },
 
+    actualizarBadgeTasaManual() {
+        const tasaContainer = document.querySelector('.cursor-pointer[onclick="Sistema.mostrarModalTasa()"] .flex');
+        if (!tasaContainer) return;
+        
+        const badgeExistente = document.getElementById('manualRateBadge');
+        
+        if (this._estado.config.tasaManual) {
+            const vigencia = this.verificarVigenciaTasaManual();
+            
+            if (!badgeExistente) {
+                const badge = document.createElement('span');
+                badge.id = 'manualRateBadge';
+                
+                if (vigencia.vigente) {
+                    badge.className = 'ml-2 text-[8px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full uppercase';
+                    badge.textContent = `Manual · ${vigencia.horasRestantes?.toFixed(0) || '24'}h`;
+                    badge.title = `Tasa manual vigente por ${vigencia.horasRestantes?.toFixed(1)} horas · Expira: ${vigencia.expiraEn}`;
+                } else {
+                    badge.className = 'ml-2 text-[8px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full uppercase';
+                    badge.textContent = 'Manual · EXPIRADA';
+                    badge.title = 'Tasa manual expirada - debe actualizarse';
+                }
+                
+                tasaContainer.appendChild(badge);
+            } else {
+                // Actualizar badge existente
+                if (vigencia.vigente) {
+                    badgeExistente.textContent = `Manual · ${vigencia.horasRestantes?.toFixed(0) || '24'}h`;
+                    badgeExistente.className = 'ml-2 text-[8px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full uppercase';
+                    badgeExistente.title = `Tasa manual vigente por ${vigencia.horasRestantes?.toFixed(1)} horas · Expira: ${vigencia.expiraEn}`;
+                } else {
+                    badgeExistente.textContent = 'Manual · EXPIRADA';
+                    badgeExistente.className = 'ml-2 text-[8px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full uppercase';
+                    badgeExistente.title = 'Tasa manual expirada - debe actualizarse';
+                }
+            }
+        } else {
+            if (badgeExistente) {
+                badgeExistente.remove();
+            }
+        }
+    },
+
     // ======================================================
     // NAVEGACIÓN ENTRE TABS
     // ======================================================
@@ -840,7 +1183,6 @@ const Sistema = {
                 if (window.Reportes) window.Reportes.cargarReportes();
                 break;
             case 'configuracion':
-                // Usar AuthSecurity en lugar de GestionLicencias
                 if (window.AuthSecurity) {
                     window.AuthSecurity.actualizarContadorVendedores();
                 }
@@ -896,6 +1238,14 @@ const Sistema = {
                 }
             });
         }
+
+        // Escuchar cambios en la tasa para actualizar UI de ventas
+        this.on(CONFIG.EVENTOS.TASA_ACTUALIZADA, () => {
+            if (window.Ventas && document.getElementById('tabVentas')?.classList.contains('active')) {
+                window.Ventas.renderizarProductos();
+                window.Ventas.actualizarCarritoUI();
+            }
+        });
     },
 
     activarVentasManual(elemento) {
@@ -904,13 +1254,24 @@ const Sistema = {
     },
 
     // ======================================================
-    // MODALES DE TASA
+    // MODALES DE TASA - VERSIÓN MEJORADA
     // ======================================================
 
     mostrarModalTasa() {
         const modal = document.getElementById('modalTasa');
         if (modal) {
-            document.getElementById('referenciaRate').textContent = this._estado.tasaBCV.toFixed(2);
+            // Actualizar el valor de referencia antes de mostrar
+            const referenciaElement = document.getElementById('referenciaRate');
+            if (referenciaElement) {
+                referenciaElement.textContent = this._estado.tasaBCV.toFixed(2);
+            }
+            
+            // Limpiar el campo de tasa manual
+            const inputManual = document.getElementById('tasaManualInput');
+            if (inputManual) {
+                inputManual.value = '';
+            }
+            
             modal.classList.add('active');
         }
     },
@@ -920,8 +1281,66 @@ const Sistema = {
     },
 
     async obtenerTasaReferencia() {
-        await this.cargarTasaBCV();
-        this.mostrarToast('Tasa actualizada', 'success');
+        try {
+            // Mostrar indicador de carga en el botón
+            const btnActualizar = document.querySelector('button[onclick="Sistema.obtenerTasaReferencia()"]');
+            const textoOriginal = btnActualizar?.innerHTML;
+            if (btnActualizar) {
+                btnActualizar.innerHTML = '<i data-lucide="loader" class="w-3 h-3 inline mr-1 animate-spin"></i> Actualizando...';
+                btnActualizar.disabled = true;
+            }
+        
+            // Intentar cargar la nueva tasa (PERO NO SOBREESCRIBIR LA MANUAL)
+            const response = await this.fetchConTimeout(
+                'https://api.exchangerate-api.com/v4/latest/USD',
+                {},
+                CONFIG.TIMEOUTS.RED
+            );
+            
+            const data = await response.json();
+            let nuevaTasaReferencia;
+            
+            if (data.rates?.VES) {
+                nuevaTasaReferencia = data.rates.VES;
+            } else {
+                throw new Error("No se pudo obtener tasa");
+            }
+            
+            // ACTUALIZAR SOLO EL VALOR VISUAL EN EL MODAL
+            const referenciaElement = document.getElementById('referenciaRate');
+            if (referenciaElement) {
+                referenciaElement.textContent = nuevaTasaReferencia.toFixed(2);
+            }
+            
+            // IMPORTANTE: NO actualizar this._estado.tasaBCV si hay tasa manual
+            // Solo actualizar el header si NO hay tasa manual
+            if (!this._estado.config.tasaManual) {
+                this._estado.tasaBCV = nuevaTasaReferencia;
+                this.actualizarTasaUI();
+                this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa: nuevaTasaReferencia, manual: false });
+            }
+            
+            this.mostrarToast('Tasa de referencia actualizada', 'success');
+            
+            // Restaurar el botón
+            if (btnActualizar) {
+                btnActualizar.innerHTML = textoOriginal;
+                btnActualizar.disabled = false;
+                if (window.lucide) lucide.createIcons();
+            }
+            
+        } catch (error) {
+            this.manejarError('actualizar_tasa_referencia', error);
+            this.mostrarToast('Error al actualizar tasa', 'error');
+            
+            // Restaurar el botón en caso de error
+            const btnActualizar = document.querySelector('button[onclick="Sistema.obtenerTasaReferencia()"]');
+            if (btnActualizar) {
+                btnActualizar.innerHTML = '<i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1"></i> Actualizar';
+                btnActualizar.disabled = false;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
     },
 
     guardarTasaManual() {
@@ -929,11 +1348,41 @@ const Sistema = {
         const tasa = parseFloat(input?.value);
         
         if (tasa && tasa > 0) {
+            const timestamp = Date.now();
+            
+            // Guardar en estado
             this._estado.tasaBCV = tasa;
             this._estado.config.tasaManual = true;
+            
+            // Persistir en localStorage con timestamp
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA, tasa.toString());
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_MANUAL_ACTIVA, 'true');
+            localStorage.setItem(CONFIG.STORAGE_KEYS.TASA_TIMESTAMP, timestamp.toString());
+            
+            // Actualizar vigencia
+            this.verificarVigenciaTasaManual();
+            
+            // Actualizar UI
             this.actualizarTasaUI();
+            this.actualizarBadgeTasaManual();
             this.cerrarModalTasa();
-            this.mostrarToast('Tasa guardada', 'success');
+            
+            // Verificar bloqueos (desbloqueará todo)
+            this.verificarBloqueoPorTasa();
+            
+            // Emitir evento de tasa actualizada
+            this.emitirEvento(CONFIG.EVENTOS.TASA_ACTUALIZADA, { tasa, manual: true });
+            
+            // Forzar recálculo de precios en UI de ventas si está visible
+            if (window.Ventas && document.getElementById('tabVentas')?.classList.contains('active')) {
+                window.Ventas.renderizarProductos();
+                window.Ventas.actualizarCarritoUI();
+            }
+            
+            // Mostrar confirmación con información de vigencia
+            const fechaExpiracion = new Date(timestamp + CONFIG.TASA_CONFIG.TASA_TTL).toLocaleString();
+            this.mostrarToast(`✅ Tasa manual configurada por 24h. Expira: ${fechaExpiracion}`, 'success');
+
             if (input) input.value = '';
         } else {
             this.mostrarToast('Ingrese una tasa válida', 'error');
@@ -943,3 +1392,7 @@ const Sistema = {
 
 // Exponer globalmente
 window.Sistema = Sistema;
+
+// lineas de codigo antes de actualizar 1177
+// lineas de codigo despues de actualizar 1397
+// lineas de codigo integradas 220 20/02/2026
