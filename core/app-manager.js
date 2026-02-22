@@ -1,6 +1,24 @@
 /**
  * @file app-manager.js
  * @description Cerebro central de SISOV PRO - VERSIÓN REFACTORIZADA
+ * @version 4.0.0
+ * @author Equipo de Desarrollo SISOV PRO
+ * // ======================================================
+// AVISO DE PROPIEDAD INTELECTUAL
+// ======================================================
+// SISOV PRO v4.0 y versiones posteriores es software comercial propietario.
+// Copyright © 2026 SISOV PRO. Todos los derechos reservados.
+// 
+// Este software está protegido por leyes de propiedad intelectual.
+// Su uso no autorizado, distribución o modificación constituye
+// una violación de estos derechos y será perseguido legalmente.
+//
+// Para obtener una licencia comercial, contacte a:
+// [TU legnar0016k.dev@gmail.com] - [TU SITIO WEB]
+// ======================================================
+// Versiones anteriores (v3.0 y anteriores) están bajo licencia MIT.
+// La versión 4.0 y posteriores NO es software libre.
+// ======================================================
  */
 
 const AppManager = {
