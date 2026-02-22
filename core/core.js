@@ -784,7 +784,8 @@ const Sistema = {
             infoMessage.innerHTML = `
                 <i data-lucide="alert-triangle" class="text-amber-600 w-5 h-5"></i>
                 <p class="text-amber-800 text-sm font-medium flex-1">
-                    <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual antes de poder realizar ventas.
+                    <span class="font-bold">⚡ ATENCIÓN:</span> Debes configurar una tasa manual cada 24 horas para de poder realizar ventas 
+                    [pulsa el boton verde para configurar la TASA BCV y desbloquear el sistema de ventas].
                 </p>
                 <button onclick="Sistema.cerrarInfoMessage()" class="text-amber-400 hover:text-amber-600">
                     <i data-lucide="x" class="w-4 h-4"></i>
